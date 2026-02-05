@@ -25,8 +25,39 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('markets', [MarketController::class, 'index']);
     Route::get('markets/{id}', [MarketController::class, 'show']);
     
+    // Dashboard & Metrics (all authenticated users can view their scope)
+    Route::prefix('dashboard')->group(function () {
+        Route::get('/', [\App\Http\Controllers\DashboardController::class, 'index']);
+        Route::get('/cash-position', [\App\Http\Controllers\DashboardController::class, 'cashPosition']);
+        Route::get('/daily-collections', [\App\Http\Controllers\DashboardController::class, 'dailyCollections']);
+        Route::get('/active-loans', [\App\Http\Controllers\DashboardController::class, 'activeLoans']);
+        Route::get('/today-repayments', [\App\Http\Controllers\DashboardController::class, 'todayRepayments']);
+        Route::get('/portfolio-exposure', [\App\Http\Controllers\DashboardController::class, 'portfolioExposure']);
+        Route::get('/loan-balance/{loanId}', [\App\Http\Controllers\DashboardController::class, 'loanBalance']);
+        Route::get('/historical', [\App\Http\Controllers\DashboardController::class, 'historicalPerformance']);
+    });
+    
+    // Cash Ledger View (all authenticated users can view)
+    Route::prefix('cash-ledger')->group(function () {
+        Route::get('/', [\App\Http\Controllers\CashLedgerController::class, 'index']);
+        Route::get('/summary', [\App\Http\Controllers\CashLedgerController::class, 'summary']);
+    });
+    
+    // Payment routes (accessible by all authenticated users)
+    Route::prefix('payments')->group(function () {
+        Route::get('/', [\App\Http\Controllers\PaymentController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\PaymentController::class, 'store']);
+        Route::get('/{id}', [\App\Http\Controllers\PaymentController::class, 'show']);
+    });
+    
     // Super Admin routes
     Route::prefix('admin')->middleware('role:super-admin')->group(function () {
+        
+        // Cash Ledger Management (Super Admin only)
+        Route::prefix('cash-ledger')->group(function () {
+            Route::post('/add-capital', [\App\Http\Controllers\CashLedgerController::class, 'addCapital']);
+            Route::post('/expense', [\App\Http\Controllers\CashLedgerController::class, 'recordExpense']);
+        });
         
         // Regions Management
         Route::post('regions', [RegionController::class, 'store']);

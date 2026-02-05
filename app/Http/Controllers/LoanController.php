@@ -315,35 +315,65 @@ class LoanController extends Controller
             ], 400);
         }
 
-        $disbursementDate = \Carbon\Carbon::parse($request->disbursement_date);
-        $dueDate = $disbursementDate->copy()->addDays($loan->duration_days);
+        DB::beginTransaction();
+        try {
+            $disbursementDate = \Carbon\Carbon::parse($request->disbursement_date);
+            $dueDate = $disbursementDate->copy()->addDays($loan->duration_days);
 
-        $loan->update([
-            'status' => 'disbursed',
-            'disbursement_date' => $disbursementDate,
-            'due_date' => $dueDate,
-            'disbursed_at' => now(),
-        ]);
+            // Update loan status
+            $loan->update([
+                'status' => 'disbursed',
+                'disbursement_date' => $disbursementDate,
+                'due_date' => $dueDate,
+                'disbursed_at' => now(),
+            ]);
 
-        // Log activity
-        LoanActivity::create([
-            'loan_id' => $loan->id,
-            'user_id' => auth()->id(),
-            'action' => 'disbursed',
-            'description' => 'Loan disbursed by ' . auth()->user()->name,
-            'metadata' => [
-                'disbursement_date' => $disbursementDate->toDateString(),
-                'due_date' => $dueDate->toDateString(),
-            ]
-        ]);
+            // Generate repayment schedule
+            $calculationService = new \App\Services\LoanCalculationService();
+            $schedules = $calculationService->generateRepaymentSchedule($loan);
 
-        $loan->load(['borrower', 'agent', 'approvedBy']);
+            // Record cash ledger entry (Money OUT)
+            \App\Models\CashLedger::create([
+                'transaction_type' => 'disbursement',
+                'amount' => -$loan->principal_amount, // Negative = money OUT
+                'loan_id' => $loan->id,
+                'user_id' => auth()->id(),
+                'transaction_date' => $disbursementDate,
+                'transaction_time' => now()->format('H:i:s'),
+                'description' => 'Loan disbursed to ' . $loan->borrower->full_name . ' - ' . $loan->loan_number,
+                'reference_number' => $loan->loan_number,
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Loan disbursed successfully',
-            'data' => $loan
-        ], 200);
+            // Log activity
+            LoanActivity::create([
+                'loan_id' => $loan->id,
+                'user_id' => auth()->id(),
+                'action' => 'disbursed',
+                'description' => 'Loan disbursed by ' . auth()->user()->name . '. ' . count($schedules) . ' repayment schedules created.',
+                'metadata' => [
+                    'disbursement_date' => $disbursementDate->toDateString(),
+                    'due_date' => $dueDate->toDateString(),
+                    'schedule_count' => count($schedules),
+                ]
+            ]);
+
+            DB::commit();
+
+            $loan->load(['borrower', 'agent', 'approvedBy', 'repaymentSchedules']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Loan disbursed successfully',
+                'data' => $loan
+            ], 200);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to disburse loan: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function summary(Request $request)

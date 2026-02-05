@@ -61,6 +61,21 @@ class Loan extends Model
         return $this->hasMany(LoanActivity::class);
     }
 
+    public function repaymentSchedules()
+    {
+        return $this->hasMany(RepaymentSchedule::class);
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function cashLedgerEntries()
+    {
+        return $this->hasMany(CashLedger::class);
+    }
+
     // Helper methods
     public function isPending()
     {
