@@ -8,6 +8,59 @@ use App\Http\Controllers\Api\BorrowerController;
 use App\Http\Controllers\Api\LoanController;
 
 // Public routes
+Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
+    // Create base roles
+    $roles = [
+        ['name' => 'Super Admin', 'slug' => 'super-admin', 'description' => 'System administrator'],
+        ['name' => 'Supervisor', 'slug' => 'supervisor', 'description' => 'System supervisor'],
+        ['name' => 'Agent', 'slug' => 'agent', 'description' => 'System agent'],
+    ];
+
+    foreach ($roles as $roleData) {
+        \App\Models\Role::firstOrCreate(['slug' => $roleData['slug']], $roleData);
+    }
+
+    // Set up validation for creating super admin
+    $validator = validator($request->all(), [
+        'name' => 'sometimes|string|max:255',
+        'email' => 'sometimes|email|unique:users,email',
+        'password' => 'sometimes|string|min:6',
+        'phone_number' => 'sometimes|string'
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    // Attempt to find existing admin or create a new one
+    $user = \App\Models\User::firstOrCreate(
+        ['email' => $request->input('email', 'admin@betamoni.com')],
+        [
+            'name' => $request->input('name', 'Super Admin'),
+            'password' => $request->input('password', 'password123'), // Cast automatically hashes this
+            'phone_number' => $request->input('phone_number', '08000000000'),
+            'address' => 'Admin Address',
+            'kyc_status' => 'verified'
+        ]
+    );
+
+    // Assign super-admin role
+    $adminRole = \App\Models\Role::where('slug', 'super-admin')->first();
+    if (!$user->roles()->where('role_id', $adminRole->id)->exists()) {
+        $user->roles()->attach($adminRole->id);
+    }
+
+    return response()->json([
+        'message' => 'Roles created and Super Admin setup completed.',
+        'user' => [
+            'id' => $user->id,
+            'email' => $user->email,
+            'name' => $user->name,
+            'roles' => $user->roles->pluck('slug')
+        ]
+    ]);
+});
+
 Route::post('/login', [AuthController::class, 'login']);
 
 // Protected routes
