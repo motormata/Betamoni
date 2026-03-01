@@ -11,11 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('permissions', function (Blueprint $table) {
+        Schema::create('markets', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('region_id')->nullable()->constrained('regions')->onDelete('set null');
             $table->string('name');
-            $table->string('slug')->unique();
-            $table->text('description')->nullable();
+            $table->string('code')->unique();
+            $table->text('address')->nullable();
+            $table->string('lga')->nullable();
+            $table->string('state')->nullable();
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
     }
@@ -25,6 +29,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('permissions');
+        Schema::dropIfExists('markets');
     }
 };
