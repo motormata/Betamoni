@@ -38,7 +38,7 @@ return new class extends Migration
             $table->foreignId('payment_id')->nullable()->constrained();
             
             // Who performed this transaction?
-            $table->foreignId('user_id')->constrained('users');
+            $table->foreignUuid('user_id')->constrained('users');
             
             // When did this happen?
             $table->date('transaction_date');

@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('loan_activities', function (Blueprint $table) {
             $table->id();
             $table->foreignId('loan_id')->constrained()->onDelete('cascade');
-            $table->foreignId('user_id')->constrained(); // Who performed the action
+            $table->foreignUuid('user_id')->constrained(); // Who performed the action
             $table->string('action'); // created, approved, rejected, disbursed, payment_received
             $table->text('description');
             $table->json('metadata')->nullable(); // Additional data

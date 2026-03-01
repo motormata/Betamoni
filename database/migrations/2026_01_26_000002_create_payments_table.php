@@ -19,7 +19,7 @@ return new class extends Migration
             $table->foreignId('loan_id')->constrained()->onDelete('cascade');
             
             // Who collected this payment?
-            $table->foreignId('collected_by')->constrained('users');
+            $table->foreignUuid('collected_by')->constrained('users');
             
             // When was the money actually received?
             $table->date('payment_date');
@@ -46,7 +46,7 @@ return new class extends Migration
             
             // Was this payment verified?
             $table->boolean('is_verified')->default(true);
-            $table->foreignId('verified_by')->nullable()->constrained('users');
+            $table->foreignUuid('verified_by')->nullable()->constrained('users');
             $table->timestamp('verified_at')->nullable();
             
             $table->timestamps();

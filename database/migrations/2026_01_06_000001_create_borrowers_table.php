@@ -33,7 +33,7 @@ return new class extends Migration
             $table->text('next_of_kin_address')->nullable();
             $table->foreignId('market_id')->nullable()->constrained();
             $table->string('shop_number')->nullable();
-            $table->foreignId('registered_by')->nullable()->constrained('users'); // Agent who registered
+            $table->foreignUuid('registered_by')->nullable()->constrained('users'); // Agent who registered
             $table->string('photo_path')->nullable();
             $table->string('id_card_path')->nullable();
             $table->string('business_photo_path')->nullable();

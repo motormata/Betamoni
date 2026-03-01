@@ -12,9 +12,9 @@ return new class extends Migration
             $table->id();
             $table->string('loan_number')->unique(); // LN-20240101-0001
             $table->foreignId('borrower_id')->constrained()->onDelete('cascade');
-            $table->foreignId('agent_id')->constrained('users'); // Agent collecting
+            $table->foreignUuid('agent_id')->constrained('users'); // Agent collecting
             $table->foreignId('market_id')->constrained();
-            $table->foreignId('approved_by')->nullable()->constrained('users'); // Supervisor
+            $table->foreignUuid('approved_by')->nullable()->constrained('users'); // Supervisor
             
             // Loan amounts
             $table->decimal('principal_amount', 15, 2); // Amount borrowed
