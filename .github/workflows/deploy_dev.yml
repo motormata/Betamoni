@@ -18,5 +18,5 @@ jobs:
           USERNAME: ${{ secrets.DEV_USERNAME }}
           PORT: ${{ secrets.PORT }}
           KEY: ${{ secrets.DEV_SSHKEY }}
-          script: cd ${{ secrets.DEV_PATH }} && ls && git pull origin develop && php8.2 /usr/local/bin/composer install && php8.2 artisan migrate && php8.2 artisan config:clear
+          script: cd ${{ secrets.DEV_PATH }} && ls && git pull origin main && php8.2 /usr/local/bin/composer install && php8.2 artisan migrate && php8.2 artisan config:clear
 
