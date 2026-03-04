@@ -35,23 +35,33 @@ class AuthController extends Controller
         // Determine login field type
         $loginField = $this->getLoginField($request->login);
         
-        // Find user
-        $user = User::where($loginField, $request->login)
-                    ->where('is_active', true)
-                    ->first();
+        $credentials = [
+            $loginField => $request->login,
+            'password' => $request->password,
+        ];
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        // Attempt to login using JWT ('api' guard)
+        if (!$token = auth('api')->attempt($credentials)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid credentials or account is inactive'
+                'message' => 'Invalid credentials'
             ], 401);
         }
 
-        // Load relationships
-        $user->load(['roles', 'market.region']);
+        // Get the authenticated user
+        $user = auth('api')->user();
 
-        // Create token
-        $token = $user->createToken('api-token')->plainTextToken;
+        // Check if user is active
+        if (!$user->is_active) {
+            auth('api')->logout();
+            return response()->json([
+                'success' => false,
+                'message' => 'Account is inactive'
+            ], 401);
+        }
+
+        // Load relationships for response
+        $user->load(['roles', 'market.region']);
 
         return response()->json([
             'success' => true,
@@ -77,7 +87,8 @@ class AuthController extends Controller
                     ] : null,
                 ],
                 'token' => $token,
-                'token_type' => 'Bearer'
+                'token_type' => 'Bearer',
+                'expires_in' => config('jwt.ttl') * 60
             ]
         ], 200);
     }
@@ -85,9 +96,9 @@ class AuthController extends Controller
     /**
      * Get authenticated user details
      */
-    public function me(Request $request)
+    public function me()
     {
-        $user = $request->user();
+        $user = auth('api')->user();
         $user->load(['roles', 'market.region']);
 
         return response()->json([
@@ -101,7 +112,6 @@ class AuthController extends Controller
                 'is_active' => $user->is_active,
                 'role' => $user->roles->first()->slug ?? null,
                 'role_name' => $user->roles->first()->name ?? null,
-                'permissions' => $user->roles->flatMap->permissions->pluck('slug')->unique()->values(),
                 'market' => $user->market ? [
                     'id' => $user->market->id,
                     'name' => $user->market->name,
@@ -120,9 +130,9 @@ class AuthController extends Controller
     /**
      * Logout user (revoke token)
      */
-    public function logout(Request $request)
+    public function logout()
     {
-        $request->user()->currentAccessToken()->delete();
+        auth('api')->logout();
 
         return response()->json([
             'success' => true,
@@ -131,37 +141,17 @@ class AuthController extends Controller
     }
 
     /**
-     * Logout from all devices (revoke all tokens)
-     */
-    public function logoutAll(Request $request)
-    {
-        $request->user()->tokens()->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged out from all devices successfully'
-        ], 200);
-    }
-
-    /**
      * Refresh token
      */
-    public function refresh(Request $request)
+    public function refresh()
     {
-        $user = $request->user();
-        
-        // Delete current token
-        $request->user()->currentAccessToken()->delete();
-        
-        // Create new token
-        $token = $user->createToken('api-token')->plainTextToken;
-
         return response()->json([
             'success' => true,
             'message' => 'Token refreshed successfully',
             'data' => [
-                'token' => $token,
-                'token_type' => 'Bearer'
+                'token' => auth('api')->refresh(),
+                'token_type' => 'Bearer',
+                'expires_in' => config('jwt.ttl') * 60
             ]
         ], 200);
     }
