@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Validator;
 
 class RegionController extends Controller
 {
-    public function fetchAll()
+    public function index()
     {
         $regions = Region::withCount('markets')->get();
 
@@ -21,9 +21,9 @@ class RegionController extends Controller
         ], 200);
     }
 
-    public function fetchById($region_id)
+    public function show($id)
     {
-        $region = Region::with('markets')->find($region_id);
+        $region = Region::with('markets')->find($id);
 
         if (!$region) {
             return response()->json(['success' => false,'message' => 'Region not found'], 404);
@@ -35,7 +35,7 @@ class RegionController extends Controller
         ], 200);
     }
 
-    public function create(Request $request)
+    public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
@@ -61,9 +61,9 @@ class RegionController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, $region_id)
+    public function update(Request $request, $id)
     {
-        $region = Region::find($region_id);
+        $region = Region::find($id);
 
         if (!$region) {
             return response()->json([
@@ -93,6 +93,32 @@ class RegionController extends Controller
             'success' => true,
             'message' => 'Region updated successfully',
             'data' => $region
+        ], 200);
+    }
+
+    public function destroy($id)
+    {
+        $region = Region::find($id);
+
+        if (!$region) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Region not found'
+            ], 404);
+        }
+
+        if ($region->markets()->count() > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete region with associated markets'
+            ], 422);
+        }
+
+        $region->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Region deleted successfully'
         ], 200);
     }
 

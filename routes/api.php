@@ -64,12 +64,11 @@ Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
 Route::post('/login', [AuthController::class, 'login']);
 
 // Protected routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth:api')->group(function () {
     
     // Auth routes (all authenticated users)
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
-    Route::post('/logout-all', [AuthController::class, 'logoutAll']);
     Route::post('/refresh', [AuthController::class, 'refresh']);
     
     // Shared routes (accessible by all authenticated users)

@@ -11,11 +11,22 @@ use Illuminate\Support\Facades\Validator;
 class UserController extends Controller
 {
     //
-    public function register(Request $request){
+    public function index()
+    {
+        $users = User::with(['roles', 'market.region'])->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $users
+        ], 200);
+    }
+
+    public function store(Request $request)
+    {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users',
-            'phone' => 'required|string|unique:users',
+            'phone_number' => 'required|string|unique:users',
             'password' => 'required|string|min:8',
             'role_id' => 'required|exists:roles,id',
             'market_id' => 'nullable|exists:markets,id',
@@ -29,10 +40,9 @@ class UserController extends Controller
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
-            'phone_number' => $request->phone,
+            'phone_number' => $request->phone_number,
             'password' => Hash::make($request->password),
             'market_id' => $request->market_id,
-            // 'agent_code' => $this->generateAgentCode(),
             'is_active' => $request->is_active ?? true,
         ]);
 
@@ -78,7 +88,7 @@ class UserController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $id,
-            'phone' => 'required|string|unique:users,phone,' . $id,
+            'phone_number' => 'required|string|unique:users,phone_number,' . $id,
             'password' => 'nullable|string|min:8',
             'role_id' => 'required|exists:roles,id',
             'market_id' => 'nullable|exists:markets,id',
@@ -163,11 +173,6 @@ class UserController extends Controller
             'message' => 'Agent assigned to market successfully',
             'data' => $user
         ], 200);
-    }
-
-    private function generateAgentCode()
-    {
-        return 'AGT' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 8));
     }
 
 }

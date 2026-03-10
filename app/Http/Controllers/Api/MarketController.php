@@ -57,9 +57,9 @@ class MarketController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, $market_id)
+    public function update(Request $request, $id)
     {
-        $market = Market::find($market_id);
+        $market = Market::find($id);
 
         if (!$market) {
             return response()->json(['success' => false,'message' => 'Market not found'], 404);
@@ -90,6 +90,32 @@ class MarketController extends Controller
             'success' => true,
             'message' => 'Market updated successfully',
             'data' => $market
+        ], 200);
+    }
+
+    public function destroy($id)
+    {
+        $market = Market::find($id);
+
+        if (!$market) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Market not found'
+            ], 404);
+        }
+
+        if ($market->agents()->count() > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete market with associated agents'
+            ], 422);
+        }
+
+        $market->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Market deleted successfully'
         ], 200);
     }
 
