@@ -8,6 +8,15 @@ use App\Http\Controllers\Api\BorrowerController;
 use App\Http\Controllers\Api\LoanController;
 
 // Public routes
+Route::get('/force-uuid-reset', function() {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true]);
+        return response()->json(['success' => true, 'message' => 'Database reset to UUID schema successfully.']);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+    }
+});
+
 Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
     // Create base roles
     $roles = [
@@ -17,27 +26,15 @@ Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
     ];
 
     foreach ($roles as $roleData) {
-        \App\Models\Role::firstOrCreate(['slug' => $roleData['slug']], $roleData);
-    }
-
-    // Set up validation for creating super admin
-    $validator = validator($request->all(), [
-        'name' => 'sometimes|string|max:255',
-        'email' => 'sometimes|email|unique:users,email',
-        'password' => 'sometimes|string|min:6',
-        'phone_number' => 'sometimes|string'
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json(['errors' => $validator->errors()], 422);
+        \App\Models\Role::updateOrCreate(['slug' => $roleData['slug']], $roleData);
     }
 
     // Attempt to find existing admin or create a new one
-    $user = \App\Models\User::firstOrCreate(
+    $user = \App\Models\User::updateOrCreate(
         ['email' => $request->input('email', 'admin@betamoni.com')],
         [
             'name' => $request->input('name', 'Super Admin'),
-            'password' => $request->input('password', 'password123'), // Cast automatically hashes this
+            'password' => $request->input('password', 'password123'),
             'phone_number' => $request->input('phone_number', '08000000000'),
             'address' => 'Admin Address',
             'kyc_status' => 'verified'
@@ -46,9 +43,7 @@ Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
 
     // Assign super-admin role
     $adminRole = \App\Models\Role::where('slug', 'super-admin')->first();
-    if (!$user->roles()->where('role_id', $adminRole->id)->exists()) {
-        $user->roles()->attach($adminRole->id);
-    }
+    $user->roles()->syncWithoutDetaching([$adminRole->id]);
 
     return response()->json([
         'message' => 'Roles created and Super Admin setup completed.',

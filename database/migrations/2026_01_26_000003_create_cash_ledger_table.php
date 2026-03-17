@@ -14,7 +14,7 @@ return new class extends Migration
     public function up()
     {
         Schema::create('cash_ledger', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             
             // What type of transaction is this?
             $table->enum('transaction_type', [
@@ -32,10 +32,10 @@ return new class extends Migration
             $table->decimal('amount', 15, 2);
             
             // Which loan does this relate to? (null for non-loan transactions)
-            $table->foreignId('loan_id')->nullable()->constrained();
+            $table->foreignUuid('loan_id')->nullable()->constrained();
             
             // Which payment does this relate to? (for payment type transactions)
-            $table->foreignId('payment_id')->nullable()->constrained();
+            $table->foreignUuid('payment_id')->nullable()->constrained();
             
             // Who performed this transaction?
             $table->foreignUuid('user_id')->constrained('users');

@@ -13,10 +13,10 @@ return new class extends Migration
     public function up()
     {
         Schema::create('payments', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             
             // Which loan is this payment for?
-            $table->foreignId('loan_id')->constrained()->onDelete('cascade');
+            $table->foreignUuid('loan_id')->constrained()->onDelete('cascade');
             
             // Who collected this payment?
             $table->foreignUuid('collected_by')->constrained('users');
@@ -36,7 +36,7 @@ return new class extends Migration
             
             // Optional: Which schedule(s) does this payment cover?
             // This can be NULL - payment is valid regardless of schedule
-            $table->foreignId('repayment_schedule_id')->nullable()->constrained();
+            $table->foreignUuid('repayment_schedule_id')->nullable()->constrained();
             
             // Where was this payment collected?
             $table->string('collection_location')->nullable();

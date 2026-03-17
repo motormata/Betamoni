@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('markets', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('region_id')->nullable()->constrained('regions')->onDelete('set null');
+            $table->uuid('id')->primary();
+            $table->foreignUuid('region_id')->nullable()->constrained('regions')->onDelete('set null');
             $table->string('name');
             $table->string('code')->unique();
             $table->text('address')->nullable();

@@ -5,8 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+
 class RepaymentSchedule extends Model
 {
+    use HasUuids;
     protected $fillable = [
         'loan_id',
         'due_date',

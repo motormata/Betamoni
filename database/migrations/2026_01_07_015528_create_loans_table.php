@@ -9,11 +9,11 @@ return new class extends Migration
     public function up()
     {
         Schema::create('loans', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->string('loan_number')->unique(); // LN-20240101-0001
-            $table->foreignId('borrower_id')->constrained()->onDelete('cascade');
+            $table->foreignUuid('borrower_id')->constrained()->onDelete('cascade');
             $table->foreignUuid('agent_id')->constrained('users'); // Agent collecting
-            $table->foreignId('market_id')->constrained();
+            $table->foreignUuid('market_id')->constrained();
             $table->foreignUuid('approved_by')->nullable()->constrained('users'); // Supervisor
             
             // Loan amounts

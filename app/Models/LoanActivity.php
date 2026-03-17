@@ -4,8 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+
 class LoanActivity extends Model
 {
+    use HasUuids;
     protected $fillable = [
         'loan_id', 'user_id', 'action', 'description', 'metadata'
     ];

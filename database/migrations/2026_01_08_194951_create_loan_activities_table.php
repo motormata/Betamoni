@@ -9,8 +9,8 @@ return new class extends Migration
     public function up()
     {
         Schema::create('loan_activities', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('loan_id')->constrained()->onDelete('cascade');
+            $table->uuid('id')->primary();
+            $table->foreignUuid('loan_id')->constrained()->onDelete('cascade');
             $table->foreignUuid('user_id')->constrained(); // Who performed the action
             $table->string('action'); // created, approved, rejected, disbursed, payment_received
             $table->text('description');
