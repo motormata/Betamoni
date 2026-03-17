@@ -43,7 +43,7 @@ Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
 
     // Assign super-admin role
     $adminRole = \App\Models\Role::where('slug', 'super-admin')->first();
-    $user->roles()->syncWithoutDetaching([$adminRole->id]);
+    $user->update(['role_id' => $adminRole->id]);
 
     return response()->json([
         'message' => 'Roles created and Super Admin setup completed.',
@@ -51,7 +51,7 @@ Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
             'id' => $user->id,
             'email' => $user->email,
             'name' => $user->name,
-            'roles' => $user->roles->pluck('slug')
+            'role' => $user->role->slug ?? null
         ]
     ]);
 });
@@ -74,7 +74,7 @@ Route::post('/temporary/update-user-role', function(\Illuminate\Http\Request $re
     $user = \App\Models\User::where('email', $request->email)->first();
     $role = \App\Models\Role::where('slug', $request->role_slug)->first();
     
-    $user->roles()->sync([$role->id]);
+    $user->update(['role_id' => $role->id]);
 
     return response()->json(['success' => true, 'message' => "Role updated to {$role->name} for {$user->email}"]);
 });

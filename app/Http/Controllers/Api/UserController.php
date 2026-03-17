@@ -13,7 +13,7 @@ class UserController extends Controller
     //
     public function index()
     {
-        $users = User::with(['roles', 'market.region'])->get();
+        $users = User::with(['role', 'market.region'])->get();
 
         return response()->json([
             'success' => true,
@@ -103,7 +103,7 @@ class UserController extends Controller
 
     public function show($id)
     {
-        $user = User::with(['roles', 'market.region'])->find($id);
+        $user = User::with(['role', 'market.region'])->find($id);
 
         if (!$user) {
             return response()->json([
@@ -154,12 +154,15 @@ class UserController extends Controller
             $data['password'] = Hash::make($request->password);
         }
 
+        $data = $request->except('password');
+        
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($request->password);
+        }
+
         $user->update($data);
 
-        // Update role
-        $user->roles()->sync([$request->role_id]);
-        
-        $user->load(['roles', 'market.region']);
+        $user->load(['role', 'market.region']);
 
         return response()->json([
             'success' => true,

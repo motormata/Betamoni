@@ -60,7 +60,7 @@ class AuthController extends Controller
         }
 
         // Load relationships for response
-        $user->load(['roles', 'market.region']);
+        $user->load(['role', 'market.region']);
 
         return response()->json([
             'success' => true,
@@ -73,8 +73,8 @@ class AuthController extends Controller
                     'phone' => $user->phone,
                     'agent_code' => $user->agent_code,
                     'is_active' => $user->is_active,
-                    'role' => $user->roles->first()->slug ?? null,
-                    'role_name' => $user->roles->first()->name ?? null,
+                    'role' => $user->role->slug ?? null,
+                    'role_name' => $user->role->name ?? null,
                     'market' => $user->market ? [
                         'id' => $user->market->id,
                         'name' => $user->market->name,
@@ -98,7 +98,7 @@ class AuthController extends Controller
     public function me()
     {
         $user = auth('api')->user();
-        $user->load(['roles', 'market.region']);
+        $user->load(['role', 'market.region']);
 
         return response()->json([
             'success' => true,
@@ -109,8 +109,8 @@ class AuthController extends Controller
                 'phone' => $user->phone,
                 'agent_code' => $user->agent_code,
                 'is_active' => $user->is_active,
-                'role' => $user->roles->first()->slug ?? null,
-                'role_name' => $user->roles->first()->name ?? null,
+                'role' => $user->role->slug ?? null,
+                'role_name' => $user->role->name ?? null,
                 'market' => $user->market ? [
                     'id' => $user->market->id,
                     'name' => $user->market->name,

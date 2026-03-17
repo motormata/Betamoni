@@ -53,7 +53,16 @@ class User extends Authenticatable implements JWTSubject
 
     public function roles()
     {
-        return $this->belongsToMany(Role::class);
+        return $this->belongsToMany(Role::class)->using(RoleUser::class);
+    }
+    public function users()
+    {
+        return $this->belongsToMany(User::class)->using(RoleUser::class);
+    }
+
+    public function role()
+    {
+        return $this->belongsTo(Role::class);
     }
 
     public function market()
@@ -64,9 +73,9 @@ class User extends Authenticatable implements JWTSubject
     public function hasRole($role)
     {
         if (is_string($role)) {
-            return $this->roles->contains('slug', $role);
+            return $this->role && $this->role->slug === $role;
         }
-        return (bool) $role->intersect($this->roles)->count();
+        return $this->role_id === $role->id;
     }
 
     public function isSuperAdmin()
@@ -104,7 +113,7 @@ class User extends Authenticatable implements JWTSubject
         // Embed the role and market_id in the token payload
         // This makes the token "role-based" and removes the need for DB hits on many requests
         return [
-            'role' => $this->roles->first()->slug ?? null,
+            'role' => $this->role->slug ?? null,
             'market_id' => $this->market_id,
         ];
     }
