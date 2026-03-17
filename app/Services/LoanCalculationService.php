@@ -111,9 +111,9 @@ class LoanCalculationService
             'date' => $date->format('Y-m-d'),
             'total_recovered' => $totalRecovered,
             'by_loan_type' => [
-                'daily' => $byType['daily'] ?? ['count' => 0, 'total_amount' => 0],
-                'weekly' => $byType['weekly'] ?? ['count' => 0, 'total_amount' => 0],
-                'monthly' => $byType['monthly'] ?? ['count' => 0, 'total_amount' => 0],
+                'daily' => $byType->get('daily', ['count' => 0, 'total_amount' => 0]),
+                'weekly' => $byType->get('weekly', ['count' => 0, 'total_amount' => 0]),
+                'monthly' => $byType->get('monthly', ['count' => 0, 'total_amount' => 0]),
             ],
             'payment_count' => $query->count(),
         ];
@@ -155,20 +155,24 @@ class LoanCalculationService
         // Group by loan type
         $byType = $activeLoans->groupBy('repayment_frequency');
 
+        $daily = $byType->get('daily', collect());
+        $weekly = $byType->get('weekly', collect());
+        $monthly = $byType->get('monthly', collect());
+
         return [
             'total_active_loans' => $activeLoans->count(),
             'by_type' => [
                 'daily' => [
-                    'count' => $byType['daily']->count() ?? 0,
-                    'total_principal' => $byType['daily']->sum('principal_amount') ?? 0,
+                    'count' => $daily->count(),
+                    'total_principal' => $daily->sum('principal_amount'),
                 ],
                 'weekly' => [
-                    'count' => $byType['weekly']->count() ?? 0,
-                    'total_principal' => $byType['weekly']->sum('principal_amount') ?? 0,
+                    'count' => $weekly->count(),
+                    'total_principal' => $weekly->sum('principal_amount'),
                 ],
                 'monthly' => [
-                    'count' => $byType['monthly']->count() ?? 0,
-                    'total_principal' => $byType['monthly']->sum('principal_amount') ?? 0,
+                    'count' => $monthly->count(),
+                    'total_principal' => $monthly->sum('principal_amount'),
                 ],
             ],
         ];
