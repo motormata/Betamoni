@@ -25,7 +25,9 @@ class User extends Authenticatable implements JWTSubject
         'password',
         'phone_number',
         'address',
-        'kyc_status'
+        'kyc_status',
+        'market_id',
+        'role_id'
     ];
 
     /**
@@ -51,14 +53,7 @@ class User extends Authenticatable implements JWTSubject
         ];
     }
 
-    public function roles()
-    {
-        return $this->belongsToMany(Role::class)->using(RoleUser::class);
-    }
-    public function users()
-    {
-        return $this->belongsToMany(User::class)->using(RoleUser::class);
-    }
+
 
     public function role()
     {

@@ -88,11 +88,11 @@ class UserController extends Controller
             'phone_number' => $request->phone_number,
             'password' => Hash::make($request->password),
             'market_id' => $request->market_id,
+            'role_id' => $request->role_id,
             'is_active' => $request->is_active ?? true,
         ]);
 
-        $user->roles()->attach($request->role_id);
-        $user->load(['roles', 'market.region']);
+        $user->load(['role', 'market.region']);
 
         return response()->json([
             'success' => true,
