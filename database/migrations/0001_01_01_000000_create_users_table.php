@@ -20,7 +20,7 @@ return new class extends Migration
             $table->string('kyc_status')->default('pending');
             $table->timestamp('email_verified_at')->nullable();
             $table->boolean('is_active')->default(true);
-            $table->foreignUuid('market_id')->nullable()->constrained('markets')->onDelete('set null');
+            $table->uuid('market_id')->nullable();
             $table->string('password');
             $table->rememberToken();
             $table->timestamps();
