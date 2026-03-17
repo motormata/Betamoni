@@ -122,6 +122,8 @@ Route::middleware('auth:api')->group(function () {
         Route::delete('markets/{id}', [MarketController::class, 'destroy']);
         
         // Users Management
+        Route::get('roles', [UserController::class, 'roles']);
+        Route::post('roles', [UserController::class, 'storeRole']);
         Route::get('users', [UserController::class, 'index']);
         Route::post('users', [UserController::class, 'store']);
         Route::get('users/{id}', [UserController::class, 'show']);

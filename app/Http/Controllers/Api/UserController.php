@@ -21,6 +21,51 @@ class UserController extends Controller
         ], 200);
     }
 
+    /**
+     * Get all available roles
+     */
+    public function roles()
+    {
+        $roles = \App\Models\Role::all();
+
+        return response()->json([
+            'success' => true,
+            'data' => $roles
+        ], 200);
+    }
+
+    /**
+     * Create a new role (Super Admin only)
+     */
+    public function storeRole(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255|unique:roles,name',
+            'slug' => 'required|string|max:255|unique:roles,slug',
+            'description' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $role = \App\Models\Role::create([
+            'name' => $request->name,
+            'slug' => $request->slug,
+            'description' => $request->description,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Role created successfully',
+            'data' => $role
+        ], 201);
+    }
+
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
