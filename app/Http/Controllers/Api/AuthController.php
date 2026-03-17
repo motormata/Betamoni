@@ -75,6 +75,7 @@ class AuthController extends Controller
                     'is_active' => $user->is_active,
                     'role' => $user->role->slug ?? null,
                     'role_name' => $user->role->name ?? null,
+                    'role_id' => $user->role_id,
                     'market' => $user->market ? [
                         'id' => $user->market->id,
                         'name' => $user->market->name,
@@ -111,6 +112,7 @@ class AuthController extends Controller
                 'is_active' => $user->is_active,
                 'role' => $user->role->slug ?? null,
                 'role_name' => $user->role->name ?? null,
+                'role_id' => $user->role_id,
                 'market' => $user->market ? [
                     'id' => $user->market->id,
                     'name' => $user->market->name,
