@@ -77,7 +77,7 @@ class CashLedgerController extends Controller
         }
 
         $entry = CashLedger::create([
-            'transaction_type' => 'capital_injection',
+            'transaction_type' => 'capital_in',
             'amount' => abs($request->amount), // Always positive (money IN)
             'user_id' => auth()->id(),
             'transaction_date' => $request->transaction_date ?? today(),
