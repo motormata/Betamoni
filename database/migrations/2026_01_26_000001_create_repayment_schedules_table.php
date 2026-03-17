@@ -14,8 +14,8 @@ return new class extends Migration
     public function up()
     {
         Schema::create('repayment_schedules', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('loan_id')->constrained()->onDelete('cascade');
+            $table->uuid('id')->primary();
+            $table->foreignUuid('loan_id')->constrained()->onDelete('cascade');
             
             // When is this payment expected?
             $table->date('due_date');

@@ -5,9 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+
 class Region extends Model
 {
-    use SoftDeletes;
+    use HasUuids, SoftDeletes;
 
     protected $fillable = ['name', 'code', 'description', 'is_active'];
 

@@ -5,9 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+
 class Borrower extends Model
 {
-    use SoftDeletes;
+    use HasUuids, SoftDeletes;
 
     protected $fillable = [
         'first_name', 'last_name', 'phone', 'alternate_phone', 'email', 'bvn',

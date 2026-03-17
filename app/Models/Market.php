@@ -4,9 +4,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+
 class Market extends Model
 {
-    use SoftDeletes;
+    use HasUuids, SoftDeletes;
 
     protected $fillable = [
         'region_id', 'name', 'code', 'address', 'lga', 'state', 'is_active'

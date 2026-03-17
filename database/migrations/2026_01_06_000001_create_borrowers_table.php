@@ -10,7 +10,7 @@ return new class extends Migration
     public function up()
     {
         Schema::create('borrowers', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->string('first_name');
             $table->string('last_name');
             $table->string('phone')->unique();
@@ -31,7 +31,7 @@ return new class extends Migration
             $table->string('next_of_kin_phone')->nullable();
             $table->string('next_of_kin_relationship')->nullable();
             $table->text('next_of_kin_address')->nullable();
-            $table->foreignId('market_id')->nullable()->constrained();
+            $table->foreignUuid('market_id')->nullable()->constrained();
             $table->string('shop_number')->nullable();
             $table->foreignUuid('registered_by')->nullable()->constrained('users'); // Agent who registered
             $table->string('photo_path')->nullable();
