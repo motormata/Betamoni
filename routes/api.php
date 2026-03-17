@@ -56,6 +56,29 @@ Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
     ]);
 });
 
+// Temporary Role Management (Public)
+Route::get('/temporary/roles', function() {
+    return response()->json(['success' => true, 'data' => \App\Models\Role::all()]);
+});
+
+Route::post('/temporary/update-user-role', function(\Illuminate\Http\Request $request) {
+    $validator = validator($request->all(), [
+        'email' => 'required|email|exists:users,email',
+        'role_slug' => 'required|string|exists:roles,slug'
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    $user = \App\Models\User::where('email', $request->email)->first();
+    $role = \App\Models\Role::where('slug', $request->role_slug)->first();
+    
+    $user->roles()->sync([$role->id]);
+
+    return response()->json(['success' => true, 'message' => "Role updated to {$role->name} for {$user->email}"]);
+});
+
 Route::post('/login', [AuthController::class, 'login']);
 
 // Protected routes
