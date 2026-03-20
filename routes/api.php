@@ -173,8 +173,8 @@ Route::middleware('auth:api')->group(function () {
     Route::prefix('supervisor')->middleware('role:supervisor')->group(function () {
         // View loans
         Route::get('loans', [LoanController::class, 'index']);
-        Route::get('loans/{id}', [LoanController::class, 'show']);
         Route::get('loans/summary', [LoanController::class, 'summary']);
+        Route::get('loans/{id}', [LoanController::class, 'show']);
         
         // Approve/Reject loans
         Route::post('loans/{id}/approve', [LoanController::class, 'approve']);
@@ -197,8 +197,8 @@ Route::middleware('auth:api')->group(function () {
         // Loan Management
         Route::get('loans', [LoanController::class, 'index']);
         Route::post('loans', [LoanController::class, 'store']);
-        Route::get('loans/{id}', [LoanController::class, 'show']);
         Route::get('loans/summary', [LoanController::class, 'summary']);
+        Route::get('loans/{id}', [LoanController::class, 'show']);
         
     });
 });
