@@ -163,9 +163,8 @@ class LoanController extends Controller
             'agent',
             'market.region',
             'approvedBy',
-            'repayments.collectedBy',
+            'payments.collectedBy',
             'guarantors',
-            'documents',
             'activities.user'
         ])->find($id);
 
