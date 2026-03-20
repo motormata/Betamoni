@@ -62,10 +62,6 @@ Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
     ]);
 });
 
-// Temporary Role Management (Public)
-Route::get('/temporary/roles', function() {
-    return response()->json(['success' => true, 'data' => \App\Models\Role::all()]);
-});
 
 Route::post('/temporary/update-user-role', function(\Illuminate\Http\Request $request) {
     $validator = validator($request->all(), [
