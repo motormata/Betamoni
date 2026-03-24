@@ -98,6 +98,17 @@ class LoanController extends Controller
             $interestAmount = ($request->principal_amount * $request->interest_rate) / 100;
             $totalAmount = $request->principal_amount + $interestAmount;
 
+            // Check if there is enough Cash in Hand to create/fund this loan
+            $calculationService = new \App\Services\LoanCalculationService();
+            $currentCash = $calculationService->calculateCashInHand();
+
+            if ($currentCash['cash_in_hand'] < $request->principal_amount) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Insufficient cash in hand to create this loan application. Available: ₦' . number_format($currentCash['cash_in_hand'], 2)
+                ], 400);
+            }
+
             // Get agent and market
             $agent = auth()->user();
             $marketId = $agent->market_id ?? $request->market_id;
@@ -314,6 +325,7 @@ class LoanController extends Controller
             ], 400);
         }
 
+        // Start transaction - all steps must complete together
         DB::beginTransaction();
         try {
             $disbursementDate = \Carbon\Carbon::parse($request->disbursement_date);

@@ -44,18 +44,14 @@ class LoanCalculationService
         $asOfDate = $asOfDate ?? today();
 
         // Build the query to get all cash movements up to the specified date
+        // Note: Cash in hand is a global system calculation (Capital - Global Disbursements + Global Recoveries).
+        // Since capital injections don't have a market_id, filtering this by market_id would incorrectly drop 
+        // the initial capital and result in a deeply negative number.
         $query = CashLedger::whereDate('transaction_date', '<=', $asOfDate);
 
-        // Filter by market if specified (for agents who only see their market)
-        if ($marketId) {
-            $query->whereHas('loan', function($q) use ($marketId) {
-                $q->where('market_id', $marketId);
-            });
-        }
-
         // Sum all transactions
-        // Positive amounts = money IN
-        // Negative amounts = money OUT
+        // Positive amounts = money IN (Capital, Payments)
+        // Negative amounts = money OUT (Disbursements, Expenses)
         $totalCash = $query->sum('amount');
 
         return [
