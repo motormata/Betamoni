@@ -169,22 +169,50 @@ class DashboardController extends Controller
         $fromDate = \Carbon\Carbon::parse($request->from_date);
         $toDate = \Carbon\Carbon::parse($request->to_date);
 
-        // Calculate metrics for each day in the range
+        // Fetch markets that we are interested in
+        $markets = \App\Models\Market::query()
+            ->when($marketId, fn($q) => $q->where('id', $marketId))
+            ->get(['id', 'name']);
+
         $dailyData = [];
         $currentDate = $fromDate->copy();
 
         while ($currentDate <= $toDate) {
+            $dayCollectionsTotal = 0;
+            $dayExpectedTotal = 0;
+            $marketBreakdown = [];
+
+            foreach ($markets as $market) {
+                $mCollections = $this->calculationService->calculateLoanRecoveredPerDay($currentDate, $market->id);
+                $mRepayments = $this->calculationService->calculateRepaymentsForToday($currentDate, $market->id);
+
+                $dayCollectionsTotal += $mCollections['total_recovered'];
+                $dayExpectedTotal += $mRepayments['total_expected'];
+
+                $marketBreakdown[] = [
+                    'market_id' => $market->id,
+                    'market_name' => $market->name,
+                    'collections' => $mCollections['total_recovered'],
+                    'expected' => $mRepayments['total_expected'],
+                    'collection_rate' => $mRepayments['total_expected'] > 0 
+                        ? round(($mCollections['total_recovered'] / $mRepayments['total_expected']) * 100, 2) 
+                        : 0,
+                ];
+            }
+
             $dailyData[] = [
                 'date' => $currentDate->format('Y-m-d'),
-                'collections' => $this->calculationService->calculateLoanRecoveredPerDay($currentDate, $marketId),
-                'repayments' => $this->calculationService->calculateRepaymentsForToday($currentDate, $marketId),
+                'total_collections' => $dayCollectionsTotal,
+                'total_expected' => $dayExpectedTotal,
+                'markets' => $marketBreakdown,
             ];
+
             $currentDate->addDay();
         }
 
-        // Summary totals
-        $totalCollected = array_sum(array_column(array_column($dailyData, 'collections'), 'total_recovered'));
-        $totalExpected = array_sum(array_column(array_column($dailyData, 'repayments'), 'total_expected'));
+        // Summary totals across entire period
+        $totalCollected = array_sum(array_column($dailyData, 'total_collections'));
+        $totalExpected = array_sum(array_column($dailyData, 'total_expected'));
 
         return response()->json([
             'success' => true,
