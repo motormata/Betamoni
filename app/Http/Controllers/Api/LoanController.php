@@ -407,28 +407,39 @@ class LoanController extends Controller
     public function summary(Request $request)
     {
         $query = Loan::query();
+        $user = auth()->user();
 
-        // Filter by agent for agents
-        if (auth()->user()->isAgent()) {
-            $query->where('agent_id', auth()->id());
+        // --- Role-Based Scoping ---
+        if ($user->isSupervisor()) {
+            $query->where('market_id', $user->market_id);
         }
 
-        // Filter by market if provided
+        if ($user->isAgent()) {
+            $query->where('agent_id', $user->id);
+        }
+
+        // --- Manual Filters ---
         if ($request->has('market_id')) {
-            $query->where('market_id', $request->market_id);
+            $requestedMarket = $request->market_id;
+            if ($user->isSupervisor() && $requestedMarket !== $user->market_id) {
+                $query->where('market_id', $user->market_id);
+            } else {
+                $query->where('market_id', $requestedMarket);
+            }
         }
 
         $summary = [
-            'total_loans' => $query->count(),
+            'total_loans' => (clone $query)->count(),
             'pending_loans' => (clone $query)->where('status', 'pending')->count(),
             'approved_loans' => (clone $query)->where('status', 'approved')->count(),
             'active_loans' => (clone $query)->where('status', 'active')->count(),
+            'overdue_loans' => (clone $query)->where('status', 'overdue')->count(),
             'completed_loans' => (clone $query)->where('status', 'completed')->count(),
             'defaulted_loans' => (clone $query)->where('status', 'defaulted')->count(),
-            'total_disbursed' => (clone $query)->whereIn('status', ['disbursed', 'active', 'completed'])
+            'total_disbursed' => (clone $query)->whereIn('status', ['disbursed', 'active', 'overdue', 'completed'])
                 ->sum('principal_amount'),
             'total_collected' => (clone $query)->sum('amount_paid'),
-            'total_outstanding' => (clone $query)->whereIn('status', ['disbursed', 'active'])
+            'total_outstanding' => (clone $query)->whereIn('status', ['disbursed', 'active', 'overdue'])
                 ->sum('balance'),
         ];
 
