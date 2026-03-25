@@ -14,12 +14,33 @@ class BorrowerController extends Controller
     {
         $query = Borrower::with(['market.region', 'registeredBy']);
 
-        // Filter by market
-        if ($request->has('market_id')) {
-            $query->where('market_id', $request->market_id);
+        // --- Role-Based Scoping ---
+        $user = auth()->user();
+
+        // 1. Supervisor: Only see borrowers in their assigned market
+        if ($user->isSupervisor()) {
+            $query->where('market_id', $user->market_id);
         }
 
-        // Filter by agent (for agents to see their registered borrowers)
+        // 2. Agent: Only see their own registered borrowers (default behavior updated)
+        if ($user->isAgent()) {
+            $query->where('registered_by', $user->id);
+        }
+
+        // --- Optional Custom Filters (from request) ---
+        // Filter by market (Admins can filter any market, Supervisors can only filter their own)
+        if ($request->has('market_id')) {
+            $requestedMarket = $request->market_id;
+            
+            if ($user->isSupervisor() && $requestedMarket !== $user->market_id) {
+                // If supervisor tries to look at another market, force back to their own
+                $query->where('market_id', $user->market_id);
+            } else {
+                $query->where('market_id', $requestedMarket);
+            }
+        }
+
+        // Filter by agent 
         if ($request->has('registered_by')) {
             $query->where('registered_by', $request->registered_by);
         }
@@ -39,7 +60,7 @@ class BorrowerController extends Controller
             $query->where('is_active', $request->is_active);
         }
 
-        $borrowers = $query->paginate($request->per_page ?? 15);
+        $borrowers = $query->latest()->paginate($request->per_page ?? 15);
 
         return response()->json([
             'success' => true,
