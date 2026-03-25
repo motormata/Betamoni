@@ -16,19 +16,41 @@ class LoanController extends Controller
     {
         $query = Loan::with(['borrower', 'agent', 'market.region', 'approvedBy']);
 
+        // --- Role-Based Scoping & Filtering ---
+        $user = auth()->user();
+
+        // 1. Supervisor: Only see loans within their assigned market
+        if ($user->isSupervisor()) {
+            $query->where('market_id', $user->market_id);
+        }
+
+        // 2. Agent: Only show their own loans
+        if ($user->isAgent()) {
+            $query->where('agent_id', $user->id);
+        }
+
+        // --- Custom Request Filters ---
+
         // Filter by status
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
 
-        // Filter by agent
+        // Filter by agent (Admins/Supervisors can filter specific agents in their scope)
         if ($request->has('agent_id')) {
             $query->where('agent_id', $request->agent_id);
         }
 
-        // Filter by market
+        // Filter by market (Admins can filter any, Supervisors are already locked to theirs)
         if ($request->has('market_id')) {
-            $query->where('market_id', $request->market_id);
+            $requestedMarket = $request->market_id;
+            
+            if ($user->isSupervisor() && $requestedMarket !== $user->market_id) {
+                // If supervisor tries to look at another market, force back to their own
+                $query->where('market_id', $user->market_id);
+            } else {
+                $query->where('market_id', $requestedMarket);
+            }
         }
 
         // Filter by date range
@@ -37,11 +59,6 @@ class LoanController extends Controller
         }
         if ($request->has('to_date')) {
             $query->whereDate('created_at', '<=', $request->to_date);
-        }
-
-        // For agents - only show their loans
-        if (auth()->user()->isAgent()) {
-            $query->where('agent_id', auth()->id());
         }
 
         // Search by loan number or borrower
@@ -97,6 +114,17 @@ class LoanController extends Controller
             // Calculate interest and total
             $interestAmount = ($request->principal_amount * $request->interest_rate) / 100;
             $totalAmount = $request->principal_amount + $interestAmount;
+
+            // Check if there is enough Cash in Hand to create/fund this loan
+            $calculationService = new \App\Services\LoanCalculationService();
+            $currentCash = $calculationService->calculateCashInHand();
+
+            if ($currentCash['cash_in_hand'] < $request->principal_amount) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Insufficient cash in hand to create this loan application. Available: ₦' . number_format($currentCash['cash_in_hand'], 2)
+                ], 400);
+            }
 
             // Get agent and market
             $agent = auth()->user();
@@ -314,6 +342,7 @@ class LoanController extends Controller
             ], 400);
         }
 
+        // Start transaction - all steps must complete together
         DB::beginTransaction();
         try {
             $disbursementDate = \Carbon\Carbon::parse($request->disbursement_date);
@@ -378,28 +407,39 @@ class LoanController extends Controller
     public function summary(Request $request)
     {
         $query = Loan::query();
+        $user = auth()->user();
 
-        // Filter by agent for agents
-        if (auth()->user()->isAgent()) {
-            $query->where('agent_id', auth()->id());
+        // --- Role-Based Scoping ---
+        if ($user->isSupervisor()) {
+            $query->where('market_id', $user->market_id);
         }
 
-        // Filter by market if provided
+        if ($user->isAgent()) {
+            $query->where('agent_id', $user->id);
+        }
+
+        // --- Manual Filters ---
         if ($request->has('market_id')) {
-            $query->where('market_id', $request->market_id);
+            $requestedMarket = $request->market_id;
+            if ($user->isSupervisor() && $requestedMarket !== $user->market_id) {
+                $query->where('market_id', $user->market_id);
+            } else {
+                $query->where('market_id', $requestedMarket);
+            }
         }
 
         $summary = [
-            'total_loans' => $query->count(),
+            'total_loans' => (clone $query)->count(),
             'pending_loans' => (clone $query)->where('status', 'pending')->count(),
             'approved_loans' => (clone $query)->where('status', 'approved')->count(),
             'active_loans' => (clone $query)->where('status', 'active')->count(),
+            'overdue_loans' => (clone $query)->where('status', 'overdue')->count(),
             'completed_loans' => (clone $query)->where('status', 'completed')->count(),
             'defaulted_loans' => (clone $query)->where('status', 'defaulted')->count(),
-            'total_disbursed' => (clone $query)->whereIn('status', ['disbursed', 'active', 'completed'])
+            'total_disbursed' => (clone $query)->whereIn('status', ['disbursed', 'active', 'overdue', 'completed'])
                 ->sum('principal_amount'),
             'total_collected' => (clone $query)->sum('amount_paid'),
-            'total_outstanding' => (clone $query)->whereIn('status', ['disbursed', 'active'])
+            'total_outstanding' => (clone $query)->whereIn('status', ['disbursed', 'active', 'overdue'])
                 ->sum('balance'),
         ];
 

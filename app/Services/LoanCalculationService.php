@@ -44,18 +44,14 @@ class LoanCalculationService
         $asOfDate = $asOfDate ?? today();
 
         // Build the query to get all cash movements up to the specified date
+        // Note: Cash in hand is a global system calculation (Capital - Global Disbursements + Global Recoveries).
+        // Since capital injections don't have a market_id, filtering this by market_id would incorrectly drop 
+        // the initial capital and result in a deeply negative number.
         $query = CashLedger::whereDate('transaction_date', '<=', $asOfDate);
 
-        // Filter by market if specified (for agents who only see their market)
-        if ($marketId) {
-            $query->whereHas('loan', function($q) use ($marketId) {
-                $q->where('market_id', $marketId);
-            });
-        }
-
         // Sum all transactions
-        // Positive amounts = money IN
-        // Negative amounts = money OUT
+        // Positive amounts = money IN (Capital, Payments)
+        // Negative amounts = money OUT (Disbursements, Expenses)
         $totalCash = $query->sum('amount');
 
         return [
@@ -190,19 +186,26 @@ class LoanCalculationService
      * 
      * WHY: This helps agents plan their collection route
      */
-    public function calculateRepaymentsForToday($date = null, $marketId = null)
+    public function calculateRepaymentsForToday($date = null, $marketId = null, $agentId = null)
     {
         // If no date specified, use today
         $date = $date ?? today();
 
         // Find all schedules due on this date
         $query = RepaymentSchedule::whereDate('due_date', $date)
-                                  ->with('loan');
+                                  ->with(['loan.borrower', 'loan.agent']);
 
         // Filter by market if specified
         if ($marketId) {
             $query->whereHas('loan', function($q) use ($marketId) {
                 $q->where('market_id', $marketId);
+            });
+        }
+
+        // Filter by agent if specified
+        if ($agentId) {
+            $query->whereHas('loan', function($q) use ($agentId) {
+                $q->where('agent_id', $agentId);
             });
         }
 
@@ -234,6 +237,18 @@ class LoanCalculationService
             'collection_rate' => $totalExpected > 0 
                 ? round(($totalCollected / $totalExpected) * 100, 2) 
                 : 0,
+            'pending_list' => $pending->values()->map(function($schedule) {
+                return [
+                    'schedule_id' => $schedule->id,
+                    'loan_number' => $schedule->loan->loan_number,
+                    'borrower_name' => $schedule->loan->borrower->full_name,
+                    'borrower_phone' => $schedule->loan->borrower->phone,
+                    'expected_amount' => $schedule->expected_amount,
+                    'amount_paid' => $schedule->getAmountPaid(),
+                    'remaining' => $schedule->getOutstandingAmount(),
+                    'location' => $schedule->loan->collection_location,
+                ];
+            }),
         ];
     }
 

@@ -223,4 +223,73 @@ class UserController extends Controller
         ], 200);
     }
 
+    public function agentsPerformance(Request $request)
+    {
+        $supervisor = auth()->user();
+        
+        // Find all agents in the same market as the supervisor
+        $agents = User::where('market_id', $supervisor->market_id)
+            ->whereHas('role', function($q) {
+                $q->where('slug', 'agent');
+            })
+            ->get();
+
+        $calculationService = new \App\Services\LoanCalculationService();
+        $date = $request->has('date') ? \Carbon\Carbon::parse($request->date) : today();
+
+        $performance = $agents->map(function($agent) use ($calculationService, $date) {
+            // 1. Collections made by this agent today
+            $collectionsQuery = \App\Models\Payment::where('collected_by', $agent->id)
+                ->whereDate('payment_date', $date);
+            
+            $collectionsAmount = $collectionsQuery->sum('amount');
+            $collectionsCount = $collectionsQuery->count();
+
+            // 2. Expected due today for this agent's specific borrowers
+            $expectedQuery = \App\Models\RepaymentSchedule::whereDate('due_date', $date)
+                ->whereHas('loan', function($q) use ($agent) {
+                    $q->where('agent_id', $agent->id);
+                });
+            
+            $expectedAmount = $expectedQuery->sum('expected_amount');
+            $expectedCount = $expectedQuery->count();
+
+            // 3. Total Overdue amount for this agent's active loans
+            $overdueQuery = \App\Models\RepaymentSchedule::whereDate('due_date', '<', $date)
+                ->where('status', '!=', 'paid')
+                ->whereHas('loan', function($q) use ($agent) {
+                    $q->where('agent_id', $agent->id);
+                });
+            
+            $overdueSchedules = $overdueQuery->get();
+            $totalOverdueAmount = $overdueSchedules->sum(function($s) { return $s->getOutstandingAmount(); });
+            $overdueCount = $overdueSchedules->count();
+
+            return [
+                'agent_id' => $agent->id,
+                'agent_name' => $agent->name,
+                'today' => [
+                    'collected_amount' => $collectionsAmount,
+                    'collected_count' => $collectionsCount,
+                    'expected_amount' => $expectedAmount,
+                    'expected_count' => $expectedCount,
+                    'performance_rate' => $expectedAmount > 0 ? round(($collectionsAmount / $expectedAmount) * 100, 2) : 0,
+                ],
+                'portfolio' => [
+                    'total_overdue_amount' => $totalOverdueAmount,
+                    'total_overdue_count' => $overdueCount,
+                    'active_loans_count' => \App\Models\Loan::where('agent_id', $agent->id)
+                        ->whereIn('status', ['active', 'overdue'])
+                        ->count(),
+                ]
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'market_name' => $supervisor->market->name ?? 'Unknown',
+            'date' => $date->format('Y-m-d'),
+            'data' => $performance
+        ], 200);
+    }
 }

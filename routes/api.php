@@ -184,6 +184,9 @@ Route::middleware('auth:api')->group(function () {
         // View borrowers
         Route::get('borrowers', [BorrowerController::class, 'index']);
         Route::get('borrowers/{id}', [BorrowerController::class, 'show']);
+
+        // Agent performance tracking
+        Route::get('agents-performance', [UserController::class, 'agentsPerformance']);
     });
     
     // Agent routes
