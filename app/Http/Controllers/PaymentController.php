@@ -100,8 +100,8 @@ class PaymentController extends Controller
                 ],
             ]);
 
-            // STEP 5: Check if loan is now fully paid
-            $this->checkAndMarkLoanComplete($loan);
+            // STEP 5: Update loan status (Check for completion and overdue/active flip)
+            $loan->syncStatus();
 
             DB::commit();
 
@@ -193,28 +193,17 @@ class PaymentController extends Controller
      */
     private function checkAndMarkLoanComplete($loan)
     {
-        // Load schedules and payments
-        $loan->load(['repaymentSchedules', 'payments']);
+        $oldStatus = $loan->status;
+        $loan->syncStatus();
 
-        // Check if all schedules are paid
-        foreach ($loan->repaymentSchedules as $schedule) {
-            if (!$schedule->isPaid()) {
-                return; // Still has unpaid schedules
-            }
+        // If the status just changed to completed, log the activity
+        if ($oldStatus !== 'completed' && $loan->status === 'completed') {
+            LoanActivity::create([
+                'loan_id' => $loan->id,
+                'user_id' => auth()->id(),
+                'action' => 'completed',
+                'description' => 'Loan fully repaid and marked as completed',
+            ]);
         }
-
-        // All schedules are paid - mark loan as completed
-        $loan->update([
-            'status' => 'completed',
-            'completed_at' => now(),
-        ]);
-
-        // Log completion
-        LoanActivity::create([
-            'loan_id' => $loan->id,
-            'user_id' => auth()->id(),
-            'action' => 'completed',
-            'description' => 'Loan fully repaid and marked as completed',
-        ]);
     }
 }

@@ -106,7 +106,40 @@ class Loan extends Model
 
     public function isOverdue()
     {
-        return $this->status === 'active' && $this->due_date < now();
+        // A loan is overdue if it's currently disbursed/active and HAS at least one overdue schedule
+        if (!in_array($this->status, ['disbursed', 'active', 'overdue'])) {
+            return false;
+        }
+
+        return $this->repaymentSchedules()->whereDate('due_date', '<', today())->where('status', '!=', 'paid')->exists();
+    }
+
+    /**
+     * Synchronize the loan status based on its current schedules and balance
+     */
+    public function syncStatus()
+    {
+        // 1. Check if fully paid
+        $totalExpected = $this->repaymentSchedules->sum('expected_amount');
+        $totalPaid = $this->payments->sum('amount');
+
+        if ($totalPaid >= $totalExpected && $totalExpected > 0) {
+            $this->update(['status' => 'completed', 'completed_at' => now()]);
+            return;
+        }
+
+        // 2. Check if overdue
+        if ($this->isOverdue()) {
+            if ($this->status !== 'overdue') {
+                $this->update(['status' => 'overdue']);
+            }
+            return;
+        }
+
+        // 3. Otherwise, if it was disbursed, it's active
+        if (in_array($this->status, ['disbursed', 'overdue'])) {
+            $this->update(['status' => 'active']);
+        }
     }
 
     public function calculateInterest()
