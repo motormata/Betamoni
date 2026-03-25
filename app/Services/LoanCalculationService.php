@@ -186,19 +186,26 @@ class LoanCalculationService
      * 
      * WHY: This helps agents plan their collection route
      */
-    public function calculateRepaymentsForToday($date = null, $marketId = null)
+    public function calculateRepaymentsForToday($date = null, $marketId = null, $agentId = null)
     {
         // If no date specified, use today
         $date = $date ?? today();
 
         // Find all schedules due on this date
         $query = RepaymentSchedule::whereDate('due_date', $date)
-                                  ->with('loan');
+                                  ->with(['loan.borrower', 'loan.agent']);
 
         // Filter by market if specified
         if ($marketId) {
             $query->whereHas('loan', function($q) use ($marketId) {
                 $q->where('market_id', $marketId);
+            });
+        }
+
+        // Filter by agent if specified
+        if ($agentId) {
+            $query->whereHas('loan', function($q) use ($agentId) {
+                $q->where('agent_id', $agentId);
             });
         }
 
@@ -230,6 +237,18 @@ class LoanCalculationService
             'collection_rate' => $totalExpected > 0 
                 ? round(($totalCollected / $totalExpected) * 100, 2) 
                 : 0,
+            'pending_list' => $pending->values()->map(function($schedule) {
+                return [
+                    'schedule_id' => $schedule->id,
+                    'loan_number' => $schedule->loan->loan_number,
+                    'borrower_name' => $schedule->loan->borrower->full_name,
+                    'borrower_phone' => $schedule->loan->borrower->phone,
+                    'expected_amount' => $schedule->expected_amount,
+                    'amount_paid' => $schedule->getAmountPaid(),
+                    'remaining' => $schedule->getOutstandingAmount(),
+                    'location' => $schedule->loan->collection_location,
+                ];
+            }),
         ];
     }
 

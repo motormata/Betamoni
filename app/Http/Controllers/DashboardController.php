@@ -109,9 +109,10 @@ class DashboardController extends Controller
     public function todayRepayments(Request $request)
     {
         $marketId = $this->getMarketFilter($request);
+        $agentId = auth()->user()->isAgent() ? auth()->id() : null;
         $date = $request->has('date') ? \Carbon\Carbon::parse($request->date) : today();
 
-        $data = $this->calculationService->calculateRepaymentsForToday($date, $marketId);
+        $data = $this->calculationService->calculateRepaymentsForToday($date, $marketId, $agentId);
 
         return response()->json([
             'success' => true,
