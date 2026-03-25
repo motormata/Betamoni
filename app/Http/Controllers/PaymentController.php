@@ -30,7 +30,7 @@ class PaymentController extends Controller
             'loan_id' => 'required|exists:loans,id',
             'amount' => 'required|numeric|min:1',
             'payment_date' => 'required|date',
-            'payment_method' => 'required|in:cash,bank_transfer,mobile_money,other',
+            'payment_method' => 'required|in:cash,bank_transfer,pos',
             'repayment_schedule_id' => 'nullable|exists:repayment_schedules,id',
             'collection_location' => 'nullable|string',
             'notes' => 'nullable|string',
