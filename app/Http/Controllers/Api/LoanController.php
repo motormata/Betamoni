@@ -16,19 +16,41 @@ class LoanController extends Controller
     {
         $query = Loan::with(['borrower', 'agent', 'market.region', 'approvedBy']);
 
+        // --- Role-Based Scoping & Filtering ---
+        $user = auth()->user();
+
+        // 1. Supervisor: Only see loans within their assigned market
+        if ($user->isSupervisor()) {
+            $query->where('market_id', $user->market_id);
+        }
+
+        // 2. Agent: Only show their own loans
+        if ($user->isAgent()) {
+            $query->where('agent_id', $user->id);
+        }
+
+        // --- Custom Request Filters ---
+
         // Filter by status
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
 
-        // Filter by agent
+        // Filter by agent (Admins/Supervisors can filter specific agents in their scope)
         if ($request->has('agent_id')) {
             $query->where('agent_id', $request->agent_id);
         }
 
-        // Filter by market
+        // Filter by market (Admins can filter any, Supervisors are already locked to theirs)
         if ($request->has('market_id')) {
-            $query->where('market_id', $request->market_id);
+            $requestedMarket = $request->market_id;
+            
+            if ($user->isSupervisor() && $requestedMarket !== $user->market_id) {
+                // If supervisor tries to look at another market, force back to their own
+                $query->where('market_id', $user->market_id);
+            } else {
+                $query->where('market_id', $requestedMarket);
+            }
         }
 
         // Filter by date range
@@ -37,11 +59,6 @@ class LoanController extends Controller
         }
         if ($request->has('to_date')) {
             $query->whereDate('created_at', '<=', $request->to_date);
-        }
-
-        // For agents - only show their loans
-        if (auth()->user()->isAgent()) {
-            $query->where('agent_id', auth()->id());
         }
 
         // Search by loan number or borrower
