@@ -164,13 +164,29 @@ class Loan extends Model
         return $this->total_amount - $this->amount_paid;
     }
 
-    // Generate loan number
-    public static function generateLoanNumber()
+    /**
+     * Generate a unique loan number.
+     *
+     * Format: BM-YYYYMMDD-XXXXXX  (6-digit random suffix)
+     *
+     * WHY NOT a simple sequence counter?
+     * A "read last number, add 1, insert" pattern has a race condition:
+     * two simultaneous requests read the same last number and generate
+     * identical loan numbers. Using a random suffix + uniqueness check
+     * eliminates that window entirely without DB-level locks.
+     *
+     * The loan_number column must have a UNIQUE index (already present
+     * in the migration) — that is the final safety net.
+     */
+    public static function generateLoanNumber(): string
     {
         $date = now()->format('Ymd');
-        $lastLoan = self::whereDate('created_at', today())->latest()->first();
-        $sequence = $lastLoan ? intval(substr($lastLoan->loan_number, -4)) + 1 : 1;
-        
-        return 'BM-' . $date . '-' . str_pad($sequence, 4, '0', STR_PAD_LEFT);
+
+        do {
+            $suffix = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $candidate = 'BM-' . $date . '-' . $suffix;
+        } while (self::where('loan_number', $candidate)->exists());
+
+        return $candidate;
     }
 }
