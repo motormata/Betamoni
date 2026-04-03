@@ -158,6 +158,14 @@ class BorrowerController extends Controller
             ], 404);
         }
 
+        // Agents may only edit borrowers they personally registered.
+        if (auth()->user()->isAgent() && $borrower->registered_by !== auth()->id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to update this borrower'
+            ], 403);
+        }
+
         $validator = Validator::make($request->all(), [
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
@@ -192,7 +200,34 @@ class BorrowerController extends Controller
             ], 422);
         }
 
-        $borrower->update($request->all());
+        // Explicitly whitelist every updatable field.
+        // registered_by, id, created_at, etc. are intentionally excluded
+        // so they can never be overwritten via this endpoint.
+        $borrower->update($request->only([
+            'first_name',
+            'last_name',
+            'phone',
+            'alternate_phone',
+            'email',
+            'bvn',
+            'gender',
+            'date_of_birth',
+            'home_address',
+            'business_address',
+            'lga',
+            'state',
+            'business_type',
+            'business_description',
+            'id_type',
+            'id_number',
+            'next_of_kin_name',
+            'next_of_kin_phone',
+            'next_of_kin_relationship',
+            'next_of_kin_address',
+            'market_id',
+            'shop_number',
+            'is_active',
+        ]));
         $borrower->load(['market.region', 'registeredBy']);
 
         return response()->json([
@@ -211,6 +246,14 @@ class BorrowerController extends Controller
                 'success' => false,
                 'message' => 'Borrower not found'
             ], 404);
+        }
+
+        // Agents may only delete borrowers they personally registered.
+        if (auth()->user()->isAgent() && $borrower->registered_by !== auth()->id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to delete this borrower'
+            ], 403);
         }
 
         $borrower->delete();

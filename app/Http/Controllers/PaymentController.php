@@ -49,7 +49,23 @@ class PaymentController extends Controller
         try {
             $loan = Loan::findOrFail($request->loan_id);
 
-            // STEP 1: Create payment record
+            // STEP 1: Determine the Repayment Schedule ID
+            // If the caller explicitly specified one, use it.
+            // Otherwise, find the oldest unpaid/overdue schedule for this loan to apply the payment against.
+            $scheduleId = $request->repayment_schedule_id;
+
+            if (!$scheduleId) {
+                $oldest = RepaymentSchedule::where('loan_id', $request->loan_id)
+                    ->whereIn('status', ['pending', 'overdue'])
+                    ->orderBy('due_date', 'asc')
+                    ->first();
+
+                if ($oldest) {
+                    $scheduleId = $oldest->id;
+                }
+            }
+
+            // STEP 2: Create payment record
             $payment = Payment::create([
                 'loan_id' => $request->loan_id,
                 'collected_by' => auth()->id(),
@@ -58,7 +74,7 @@ class PaymentController extends Controller
                 'amount' => $request->amount,
                 'payment_method' => $request->payment_method,
                 'receipt_number' => Payment::generateReceiptNumber(),
-                'repayment_schedule_id' => $request->repayment_schedule_id,
+                'repayment_schedule_id' => $scheduleId, // Uses the explicitly provided OR auto-detected ID
                 'collection_location' => $request->collection_location,
                 'notes' => $request->notes,
                 'is_verified' => true, // Auto-verify
@@ -66,7 +82,7 @@ class PaymentController extends Controller
                 'verified_at' => now(),
             ]);
 
-            // STEP 2: Create cash ledger entry (Money IN)
+            // STEP 3: Create cash ledger entry (Money IN)
             CashLedger::create([
                 'transaction_type' => 'payment',
                 'amount' => $request->amount, // Positive = money IN
@@ -79,9 +95,9 @@ class PaymentController extends Controller
                 'reference_number' => $payment->receipt_number,
             ]);
 
-            // STEP 3: Update repayment schedule status if specified
-            if ($request->repayment_schedule_id) {
-                $schedule = RepaymentSchedule::find($request->repayment_schedule_id);
+            // STEP 4: Trigger schedule status update (pending -> paid)
+            if ($scheduleId) {
+                $schedule = RepaymentSchedule::find($scheduleId);
                 if ($schedule) {
                     $schedule->updateStatus();
                 }
@@ -100,8 +116,21 @@ class PaymentController extends Controller
                 ],
             ]);
 
-            // STEP 5: Update loan status (Check for completion and overdue/active flip)
-            $loan->syncStatus();
+            // STEP 5: Update the loan's running totals atomically.
+            // DB::increment is used so concurrent payments don't race each other.
+            // balance = total_amount - new amount_paid, recalculated from the DB value.
+            DB::table('loans')
+                ->where('id', $loan->id)
+                ->update([
+                    'amount_paid' => DB::raw('amount_paid + ' . floatval($request->amount)),
+                    'balance'     => DB::raw('GREATEST(0, balance - ' . floatval($request->amount) . ')'),
+                ]);
+
+            // Reload so syncStatus() sees the updated totals
+            $loan->refresh();
+
+            // STEP 6: Sync loan status and log completion if the loan just became fully paid
+            $this->checkAndMarkLoanComplete($loan);
 
             DB::commit();
 
@@ -189,19 +218,25 @@ class PaymentController extends Controller
     }
 
     /**
-     * Check if a loan is now fully paid and mark it complete
+     * Sync the loan status and log a 'completed' activity if the loan
+     * just became fully repaid as a result of this payment.
      */
     private function checkAndMarkLoanComplete($loan)
     {
         $oldStatus = $loan->status;
+
+        // syncStatus() writes the new status to the DB
         $loan->syncStatus();
 
-        // If the status just changed to completed, log the activity
+        // Refresh the model so ->status reflects what syncStatus() just wrote
+        $loan->refresh();
+
+        // If the status just flipped to completed, leave a permanent activity trail
         if ($oldStatus !== 'completed' && $loan->status === 'completed') {
             LoanActivity::create([
-                'loan_id' => $loan->id,
-                'user_id' => auth()->id(),
-                'action' => 'completed',
+                'loan_id'     => $loan->id,
+                'user_id'     => auth()->id(),
+                'action'      => 'completed',
                 'description' => 'Loan fully repaid and marked as completed',
             ]);
         }

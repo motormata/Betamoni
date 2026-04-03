@@ -135,7 +135,6 @@ class UserController extends Controller
             'email' => 'required|email|unique:users,email,' . $id,
             'phone_number' => 'required|string|unique:users,phone_number,' . $id,
             'password' => 'nullable|string|min:8',
-            'role_id' => 'required|exists:roles,id',
             'market_id' => 'nullable|exists:markets,id',
             'is_active' => 'boolean',
         ]);
@@ -148,14 +147,16 @@ class UserController extends Controller
             ], 422);
         }
 
-        $data = $request->except('password', 'role_id');
-        
-        if ($request->filled('password')) {
-            $data['password'] = Hash::make($request->password);
-        }
+        // Whitelist only the fields that should be updatable via this endpoint.
+        // role_id is intentionally excluded — use the role-management endpoint instead.
+        $data = $request->only([
+            'name',
+            'email',
+            'phone_number',
+            'market_id',
+            'is_active',
+        ]);
 
-        $data = $request->except('password');
-        
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->password);
         }
