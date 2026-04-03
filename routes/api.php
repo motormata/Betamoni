@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\BorrowerController;
 use App\Http\Controllers\Api\LoanController;
+use App\Http\Controllers\Api\LoanProductController;
 
 // Public routes
 Route::get('/force-uuid-reset', function() {
@@ -153,6 +154,13 @@ Route::middleware('auth:api')->group(function () {
         Route::put('markets/{id}', [MarketController::class, 'update']);
         Route::delete('markets/{id}', [MarketController::class, 'destroy']);
         
+        // Loan Products Management
+        Route::get('products', [LoanProductController::class, 'indexAdmin']);
+        Route::post('products', [LoanProductController::class, 'store']);
+        Route::get('products/{id}', [LoanProductController::class, 'show']);
+        Route::put('products/{id}', [LoanProductController::class, 'update']);
+        Route::delete('products/{id}', [LoanProductController::class, 'destroy']);
+        
         // Users Management
         Route::get('roles', [UserController::class, 'roles']);
         Route::post('roles', [UserController::class, 'storeRole']);
@@ -171,6 +179,9 @@ Route::middleware('auth:api')->group(function () {
     
     // Supervisor routes
     Route::prefix('supervisor')->middleware('role:supervisor')->group(function () {
+        // Loan Products
+        Route::get('products', [LoanProductController::class, 'index']);
+
         // View loans
         Route::get('loans', [LoanController::class, 'index']);
         Route::get('loans/summary', [LoanController::class, 'summary']);
@@ -191,6 +202,9 @@ Route::middleware('auth:api')->group(function () {
     
     // Agent routes
     Route::prefix('agent')->middleware('role:agent')->group(function () {
+        // Loan Products
+        Route::get('products', [LoanProductController::class, 'index']);
+
         // Borrower Management
         Route::get('borrowers', [BorrowerController::class, 'index']);
         Route::post('borrowers', [BorrowerController::class, 'store']);
