@@ -100,7 +100,20 @@ class PaymentController extends Controller
                 ],
             ]);
 
-            // STEP 5: Update loan status (Check for completion and overdue/active flip)
+            // STEP 5: Update the loan's running totals atomically.
+            // DB::increment is used so concurrent payments don't race each other.
+            // balance = total_amount - new amount_paid, recalculated from the DB value.
+            DB::table('loans')
+                ->where('id', $loan->id)
+                ->update([
+                    'amount_paid' => DB::raw('amount_paid + ' . floatval($request->amount)),
+                    'balance'     => DB::raw('GREATEST(0, balance - ' . floatval($request->amount) . ')'),
+                ]);
+
+            // Reload so syncStatus() sees the updated totals
+            $loan->refresh();
+
+            // STEP 6: Sync loan status (completed / overdue / active)
             $loan->syncStatus();
 
             DB::commit();

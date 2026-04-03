@@ -115,20 +115,27 @@ class Loan extends Model
     }
 
     /**
-     * Synchronize the loan status based on its current schedules and balance
+     * Synchronize the loan status based on its current schedules and balance.
+     *
+     * IMPORTANT: always use the query-builder form of the relationships
+     * (i.e. repaymentSchedules() / payments() with parentheses) rather than
+     * the collection property (repaymentSchedules / payments without parentheses).
+     * The property returns whatever was eager-loaded at model-load time, which
+     * will be stale if a payment was just written inside the same request.
+     * The query-builder form always issues a fresh DB query.
      */
     public function syncStatus()
     {
-        // 1. Check if fully paid
-        $totalExpected = $this->repaymentSchedules->sum('expected_amount');
-        $totalPaid = $this->payments->sum('amount');
+        // 1. Check if fully paid — query fresh from DB
+        $totalExpected = $this->repaymentSchedules()->sum('expected_amount');
+        $totalPaid     = $this->payments()->sum('amount');
 
         if ($totalPaid >= $totalExpected && $totalExpected > 0) {
             $this->update(['status' => 'completed', 'completed_at' => now()]);
             return;
         }
 
-        // 2. Check if overdue
+        // 2. Check if overdue (isOverdue already uses the query-builder internally)
         if ($this->isOverdue()) {
             if ($this->status !== 'overdue') {
                 $this->update(['status' => 'overdue']);
@@ -136,7 +143,7 @@ class Loan extends Model
             return;
         }
 
-        // 3. Otherwise, if it was disbursed, it's active
+        // 3. Otherwise, if it was disbursed/overdue and now has a payment, mark active
         if (in_array($this->status, ['disbursed', 'overdue'])) {
             $this->update(['status' => 'active']);
         }
