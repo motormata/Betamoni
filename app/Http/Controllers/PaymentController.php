@@ -113,8 +113,8 @@ class PaymentController extends Controller
             // Reload so syncStatus() sees the updated totals
             $loan->refresh();
 
-            // STEP 6: Sync loan status (completed / overdue / active)
-            $loan->syncStatus();
+            // STEP 6: Sync loan status and log completion if the loan just became fully paid
+            $this->checkAndMarkLoanComplete($loan);
 
             DB::commit();
 
@@ -202,19 +202,25 @@ class PaymentController extends Controller
     }
 
     /**
-     * Check if a loan is now fully paid and mark it complete
+     * Sync the loan status and log a 'completed' activity if the loan
+     * just became fully repaid as a result of this payment.
      */
     private function checkAndMarkLoanComplete($loan)
     {
         $oldStatus = $loan->status;
+
+        // syncStatus() writes the new status to the DB
         $loan->syncStatus();
 
-        // If the status just changed to completed, log the activity
+        // Refresh the model so ->status reflects what syncStatus() just wrote
+        $loan->refresh();
+
+        // If the status just flipped to completed, leave a permanent activity trail
         if ($oldStatus !== 'completed' && $loan->status === 'completed') {
             LoanActivity::create([
-                'loan_id' => $loan->id,
-                'user_id' => auth()->id(),
-                'action' => 'completed',
+                'loan_id'     => $loan->id,
+                'user_id'     => auth()->id(),
+                'action'      => 'completed',
                 'description' => 'Loan fully repaid and marked as completed',
             ]);
         }
