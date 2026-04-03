@@ -86,10 +86,8 @@ class LoanController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'borrower_id' => 'required|exists:borrowers,id',
-            'principal_amount' => 'required|numeric|min:1000',
-            'interest_rate' => 'required|numeric|min:0|max:100',
-            'duration_days' => 'required|integer|min:1',
-            'repayment_frequency' => 'required|in:daily,weekly,bi-weekly,monthly',
+            'loan_product_id' => 'required|exists:loan_products,id',
+            'quantity' => 'required|integer|min:1',
             'collection_day' => 'nullable|string',
             'collection_time' => 'nullable|date_format:H:i',
             'collection_location' => 'nullable|string',
@@ -111,15 +109,19 @@ class LoanController extends Controller
 
         DB::beginTransaction();
         try {
-            // Calculate interest and total
-            $interestAmount = ($request->principal_amount * $request->interest_rate) / 100;
-            $totalAmount = $request->principal_amount + $interestAmount;
+            // Retrieve the active product to lock in the immutable terms
+            $product = \App\Models\LoanProduct::findOrFail($request->loan_product_id);
+
+            // Calculate the actual values based on product constraints multiplied by requested units
+            $calculatedPrincipal = $product->principal_amount * $request->quantity;
+            $interestAmount = ($calculatedPrincipal * $product->interest_rate) / 100;
+            $totalAmount = $calculatedPrincipal + $interestAmount;
 
             // Check if there is enough Cash in Hand to create/fund this loan
             $calculationService = new \App\Services\LoanCalculationService();
             $currentCash = $calculationService->calculateCashInHand();
 
-            if ($currentCash['cash_in_hand'] < $request->principal_amount) {
+            if ($currentCash['cash_in_hand'] < $calculatedPrincipal) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Insufficient cash in hand to create this loan application. Available: ₦' . number_format($currentCash['cash_in_hand'], 2)
@@ -133,15 +135,17 @@ class LoanController extends Controller
             $loan = Loan::create([
                 'loan_number' => Loan::generateLoanNumber(),
                 'borrower_id' => $request->borrower_id,
+                'loan_product_id' => $product->id,
+                'quantity' => $request->quantity,
                 'agent_id' => auth()->id(),
                 'market_id' => $marketId,
-                'principal_amount' => $request->principal_amount,
-                'interest_rate' => $request->interest_rate,
+                'principal_amount' => $calculatedPrincipal,
+                'interest_rate' => $product->interest_rate, // Lock the snapshot rate in here
                 'interest_amount' => $interestAmount,
                 'total_amount' => $totalAmount,
                 'balance' => $totalAmount,
-                'duration_days' => $request->duration_days,
-                'repayment_frequency' => $request->repayment_frequency,
+                'duration_days' => $product->duration_days,
+                'repayment_frequency' => $product->repayment_frequency,
                 'collection_day' => $request->collection_day,
                 'collection_time' => $request->collection_time,
                 'collection_location' => $request->collection_location,

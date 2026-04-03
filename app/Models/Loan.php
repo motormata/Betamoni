@@ -12,7 +12,7 @@ class Loan extends Model
     use HasUuids, SoftDeletes;
 
     protected $fillable = [
-        'loan_number', 'borrower_id', 'agent_id', 'market_id', 'approved_by',
+        'loan_number', 'borrower_id', 'loan_product_id', 'quantity', 'agent_id', 'market_id', 'approved_by',
         'principal_amount', 'interest_rate', 'interest_amount', 'total_amount',
         'amount_paid', 'balance', 'duration_days', 'disbursement_date', 'due_date',
         'repayment_frequency', 'installment_amount', 'status', 'collection_day',
@@ -50,6 +50,11 @@ class Loan extends Model
     public function market()
     {
         return $this->belongsTo(Market::class);
+    }
+
+    public function product()
+    {
+        return $this->belongsTo(LoanProduct::class, 'loan_product_id');
     }
 
     public function approvedBy()
