@@ -49,7 +49,23 @@ class PaymentController extends Controller
         try {
             $loan = Loan::findOrFail($request->loan_id);
 
-            // STEP 1: Create payment record
+            // STEP 1: Determine the Repayment Schedule ID
+            // If the caller explicitly specified one, use it.
+            // Otherwise, find the oldest unpaid/overdue schedule for this loan to apply the payment against.
+            $scheduleId = $request->repayment_schedule_id;
+
+            if (!$scheduleId) {
+                $oldest = RepaymentSchedule::where('loan_id', $request->loan_id)
+                    ->whereIn('status', ['pending', 'overdue'])
+                    ->orderBy('due_date', 'asc')
+                    ->first();
+
+                if ($oldest) {
+                    $scheduleId = $oldest->id;
+                }
+            }
+
+            // STEP 2: Create payment record
             $payment = Payment::create([
                 'loan_id' => $request->loan_id,
                 'collected_by' => auth()->id(),
@@ -58,7 +74,7 @@ class PaymentController extends Controller
                 'amount' => $request->amount,
                 'payment_method' => $request->payment_method,
                 'receipt_number' => Payment::generateReceiptNumber(),
-                'repayment_schedule_id' => $request->repayment_schedule_id,
+                'repayment_schedule_id' => $scheduleId, // Uses the explicitly provided OR auto-detected ID
                 'collection_location' => $request->collection_location,
                 'notes' => $request->notes,
                 'is_verified' => true, // Auto-verify
@@ -66,7 +82,7 @@ class PaymentController extends Controller
                 'verified_at' => now(),
             ]);
 
-            // STEP 2: Create cash ledger entry (Money IN)
+            // STEP 3: Create cash ledger entry (Money IN)
             CashLedger::create([
                 'transaction_type' => 'payment',
                 'amount' => $request->amount, // Positive = money IN
@@ -79,9 +95,9 @@ class PaymentController extends Controller
                 'reference_number' => $payment->receipt_number,
             ]);
 
-            // STEP 3: Update repayment schedule status if specified
-            if ($request->repayment_schedule_id) {
-                $schedule = RepaymentSchedule::find($request->repayment_schedule_id);
+            // STEP 4: Trigger schedule status update (pending -> paid)
+            if ($scheduleId) {
+                $schedule = RepaymentSchedule::find($scheduleId);
                 if ($schedule) {
                     $schedule->updateStatus();
                 }
