@@ -150,83 +150,208 @@ class DashboardController extends Controller
 
     /**
      * Get historical performance (date range)
+     *
+     * PERFORMANCE: Uses 5 batch SQL queries with GROUP BY instead of
+     * per-day, per-market service calls. Query count is constant
+     * regardless of date range or number of markets.
      */
     public function historicalPerformance(Request $request)
     {
         $validator = \Validator::make($request->all(), [
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after_or_equal:from_date',
+            'to_date'   => 'required|date|after_or_equal:from_date',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors'  => $validator->errors()
             ], 422);
         }
 
         $marketId = $this->getMarketFilter($request);
         $fromDate = \Carbon\Carbon::parse($request->from_date);
-        $toDate = \Carbon\Carbon::parse($request->to_date);
+        $toDate   = \Carbon\Carbon::parse($request->to_date);
 
-        // Fetch markets that we are interested in
+        // Fetch markets we are interested in
         $markets = \App\Models\Market::query()
             ->when($marketId, fn($q) => $q->where('id', $marketId))
-            ->get(['id', 'name']);
+            ->get(['id', 'name'])
+            ->keyBy('id');
 
-        $dailyData = [];
+        $marketIds = $markets->pluck('id');
+
+        // ────────────────────────────────────────────────────────────
+        // QUERY 1: Collections (verified payments) grouped by date + market
+        // ────────────────────────────────────────────────────────────
+        $collections = \App\Models\Payment::query()
+            ->join('loans', 'payments.loan_id', '=', 'loans.id')
+            ->whereBetween('payments.payment_date', [$fromDate, $toDate])
+            ->where('payments.is_verified', true)
+            ->when($marketId, fn($q) => $q->where('loans.market_id', $marketId))
+            ->groupBy('date', 'loans.market_id')
+            ->select(
+                \DB::raw('DATE(payments.payment_date) as date'),
+                'loans.market_id',
+                \DB::raw('SUM(payments.amount) as total_recovered'),
+                \DB::raw('COUNT(payments.id) as payment_count')
+            )
+            ->get()
+            ->groupBy('date')
+            ->map(fn($rows) => $rows->keyBy('market_id'));
+
+        // ────────────────────────────────────────────────────────────
+        // QUERY 2: Expected repayments grouped by date + market
+        // ────────────────────────────────────────────────────────────
+        $expected = \App\Models\RepaymentSchedule::query()
+            ->join('loans', 'repayment_schedules.loan_id', '=', 'loans.id')
+            ->whereBetween('repayment_schedules.due_date', [$fromDate, $toDate])
+            ->when($marketId, fn($q) => $q->where('loans.market_id', $marketId))
+            ->groupBy('date', 'loans.market_id')
+            ->select(
+                \DB::raw('DATE(repayment_schedules.due_date) as date'),
+                'loans.market_id',
+                \DB::raw('SUM(repayment_schedules.expected_amount) as total_expected')
+            )
+            ->get()
+            ->groupBy('date')
+            ->map(fn($rows) => $rows->keyBy('market_id'));
+
+        // ────────────────────────────────────────────────────────────
+        // QUERIES 3-5: Loan activity (approved / disbursed / rejected)
+        // ────────────────────────────────────────────────────────────
+        $loanActivityFetch = function ($timestampCol) use ($fromDate, $toDate, $marketId) {
+            return \App\Models\Loan::query()
+                ->whereNotNull($timestampCol)
+                ->whereBetween($timestampCol, [$fromDate, $toDate->copy()->endOfDay()])
+                ->when($marketId, fn($q) => $q->where('market_id', $marketId))
+                ->groupBy('date', 'market_id')
+                ->select(
+                    \DB::raw("DATE($timestampCol) as date"),
+                    'market_id',
+                    \DB::raw('COUNT(*) as loan_count'),
+                    \DB::raw('SUM(principal_amount) as total_principal')
+                )
+                ->get()
+                ->groupBy('date')
+                ->map(fn($rows) => $rows->keyBy('market_id'));
+        };
+
+        $approvedData  = $loanActivityFetch('approved_at');
+        $disbursedData = $loanActivityFetch('disbursed_at');
+        $rejectedData  = $loanActivityFetch('rejected_at');
+
+        // ────────────────────────────────────────────────────────────
+        // Assemble the response from pre-fetched data
+        // ────────────────────────────────────────────────────────────
+        $dailyData   = [];
         $currentDate = $fromDate->copy();
 
         while ($currentDate <= $toDate) {
-            $dayCollectionsTotal = 0;
-            $dayExpectedTotal = 0;
+            $dateKey = $currentDate->format('Y-m-d');
+
+            $dayCollections     = 0;
+            $dayExpected        = 0;
+            $dayApprovedCount   = 0;
+            $dayApprovedVolume  = 0;
+            $dayDisbursedCount  = 0;
+            $dayDisbursedVolume = 0;
+            $dayRejectedCount   = 0;
+            $dayRejectedVolume  = 0;
+
             $marketBreakdown = [];
 
-            foreach ($markets as $market) {
-                $mCollections = $this->calculationService->calculateLoanRecoveredPerDay($currentDate, $market->id);
-                $mRepayments = $this->calculationService->calculateRepaymentsForToday($currentDate, $market->id);
+            foreach ($markets as $mId => $market) {
+                // Look up pre-fetched rows (default to zero)
+                $cRow = $collections->get($dateKey)?->get($mId);
+                $eRow = $expected->get($dateKey)?->get($mId);
+                $aRow = $approvedData->get($dateKey)?->get($mId);
+                $dRow = $disbursedData->get($dateKey)?->get($mId);
+                $rRow = $rejectedData->get($dateKey)?->get($mId);
 
-                $dayCollectionsTotal += $mCollections['total_recovered'];
-                $dayExpectedTotal += $mRepayments['total_expected'];
+                $mCollected  = (float) ($cRow->total_recovered ?? 0);
+                $mExpected   = (float) ($eRow->total_expected ?? 0);
+                $mApprCount  = (int)   ($aRow->loan_count ?? 0);
+                $mApprVol    = (float) ($aRow->total_principal ?? 0);
+                $mDisbCount  = (int)   ($dRow->loan_count ?? 0);
+                $mDisbVol    = (float) ($dRow->total_principal ?? 0);
+                $mRejCount   = (int)   ($rRow->loan_count ?? 0);
+                $mRejVol     = (float) ($rRow->total_principal ?? 0);
+
+                $dayCollections     += $mCollected;
+                $dayExpected        += $mExpected;
+                $dayApprovedCount   += $mApprCount;
+                $dayApprovedVolume  += $mApprVol;
+                $dayDisbursedCount  += $mDisbCount;
+                $dayDisbursedVolume += $mDisbVol;
+                $dayRejectedCount   += $mRejCount;
+                $dayRejectedVolume  += $mRejVol;
 
                 $marketBreakdown[] = [
-                    'market_id' => $market->id,
-                    'market_name' => $market->name,
-                    'collections' => $mCollections['total_recovered'],
-                    'expected' => $mRepayments['total_expected'],
-                    'collection_rate' => $mRepayments['total_expected'] > 0 
-                        ? round(($mCollections['total_recovered'] / $mRepayments['total_expected']) * 100, 2) 
+                    'market_id'       => $mId,
+                    'market_name'     => $market->name,
+                    'collections'     => $mCollected,
+                    'expected'        => $mExpected,
+                    'collection_rate' => $mExpected > 0
+                        ? round(($mCollected / $mExpected) * 100, 2)
                         : 0,
+                    'activity' => [
+                        'approved'  => ['count' => $mApprCount, 'total_principal' => $mApprVol],
+                        'disbursed' => ['count' => $mDisbCount, 'total_principal' => $mDisbVol],
+                        'rejected'  => ['count' => $mRejCount,  'total_principal' => $mRejVol],
+                    ],
                 ];
             }
 
             $dailyData[] = [
-                'date' => $currentDate->format('Y-m-d'),
-                'total_collections' => $dayCollectionsTotal,
-                'total_expected' => $dayExpectedTotal,
-                'markets' => $marketBreakdown,
+                'date'                   => $dateKey,
+                'total_collections'      => $dayCollections,
+                'total_expected'         => $dayExpected,
+                'total_approved_count'   => $dayApprovedCount,
+                'total_approved_volume'  => $dayApprovedVolume,
+                'total_disbursed_count'  => $dayDisbursedCount,
+                'total_disbursed_volume' => $dayDisbursedVolume,
+                'total_rejected_count'   => $dayRejectedCount,
+                'total_rejected_volume'  => $dayRejectedVolume,
+                'markets'                => $marketBreakdown,
             ];
 
             $currentDate->addDay();
         }
 
-        // Summary totals across entire period
-        $totalCollected = array_sum(array_column($dailyData, 'total_collections'));
-        $totalExpected = array_sum(array_column($dailyData, 'total_expected'));
+        // ────────────────────────────────────────────────────────────
+        // Period-wide summary
+        // ────────────────────────────────────────────────────────────
+        $totalCollected      = array_sum(array_column($dailyData, 'total_collections'));
+        $totalExpected       = array_sum(array_column($dailyData, 'total_expected'));
+        $totalApprovedCount  = array_sum(array_column($dailyData, 'total_approved_count'));
+        $totalApprovedVolume = array_sum(array_column($dailyData, 'total_approved_volume'));
+        $totalDisbursedCount = array_sum(array_column($dailyData, 'total_disbursed_count'));
+        $totalDisbursedVolume= array_sum(array_column($dailyData, 'total_disbursed_volume'));
+        $totalRejectedCount  = array_sum(array_column($dailyData, 'total_rejected_count'));
+        $totalRejectedVolume = array_sum(array_column($dailyData, 'total_rejected_volume'));
 
         return response()->json([
             'success' => true,
-            'data' => [
+            'data'    => [
                 'period' => [
                     'from' => $fromDate->format('Y-m-d'),
-                    'to' => $toDate->format('Y-m-d'),
+                    'to'   => $toDate->format('Y-m-d'),
                     'days' => $fromDate->diffInDays($toDate) + 1,
                 ],
                 'summary' => [
-                    'total_collected' => $totalCollected,
-                    'total_expected' => $totalExpected,
-                    'collection_rate' => $totalExpected > 0 ? round(($totalCollected / $totalExpected) * 100, 2) : 0,
+                    'total_collected'  => $totalCollected,
+                    'total_expected'   => $totalExpected,
+                    'collection_rate'  => $totalExpected > 0 ? round(($totalCollected / $totalExpected) * 100, 2) : 0,
+                    'loans' => [
+                        'approved_count'   => $totalApprovedCount,
+                        'approved_volume'  => $totalApprovedVolume,
+                        'disbursed_count'  => $totalDisbursedCount,
+                        'disbursed_volume' => $totalDisbursedVolume,
+                        'rejected_count'   => $totalRejectedCount,
+                        'rejected_volume'  => $totalRejectedVolume,
+                    ],
                 ],
                 'daily_breakdown' => $dailyData,
             ]

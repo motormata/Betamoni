@@ -327,6 +327,45 @@ class LoanCalculationService
     }
 
     /**
+     * CALCULATION F: Loan Approvals, Disbursements, and Rejections per Day
+     * 
+     * This calculates the daily volume and value of loan originations.
+     */
+    public function calculateLoanActivityByDate($date = null, $marketId = null)
+    {
+        $date = $date ?? today();
+        
+        $approvedQuery = Loan::whereDate('approved_at', $date);
+        $disbursedQuery = Loan::whereDate('disbursed_at', $date);
+        $rejectedQuery = Loan::whereDate('rejected_at', $date);
+
+        if ($marketId) {
+            $approvedQuery->where('market_id', $marketId);
+            $disbursedQuery->where('market_id', $marketId);
+            $rejectedQuery->where('market_id', $marketId);
+        }
+
+        $approved = $approvedQuery->get(['id', 'principal_amount']);
+        $disbursed = $disbursedQuery->get(['id', 'principal_amount']);
+        $rejected = $rejectedQuery->get(['id', 'principal_amount']);
+
+        return [
+            'approved' => [
+                'count' => $approved->count(),
+                'total_principal' => $approved->sum('principal_amount')
+            ],
+            'disbursed' => [
+                'count' => $disbursed->count(),
+                'total_principal' => $disbursed->sum('principal_amount')
+            ],
+            'rejected' => [
+                'count' => $rejected->count(),
+                'total_principal' => $rejected->sum('principal_amount')
+            ]
+        ];
+    }
+
+    /**
      * HELPER: Check if a loan has unpaid obligations
      * 
      * A loan has unpaid obligations if ANY of its repayment schedules
