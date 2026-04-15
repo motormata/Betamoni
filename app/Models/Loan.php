@@ -112,7 +112,7 @@ class Loan extends Model
     public function isOverdue()
     {
         // A loan is overdue if it's currently disbursed/active and HAS at least one overdue schedule
-        if (!in_array($this->status, ['disbursed', 'active', 'overdue'])) {
+        if (!in_array($this->status, ['disbursed', 'active', 'defaulted'])) {
             return false;
         }
 
@@ -142,14 +142,14 @@ class Loan extends Model
 
         // 2. Check if overdue (isOverdue already uses the query-builder internally)
         if ($this->isOverdue()) {
-            if ($this->status !== 'overdue') {
-                $this->update(['status' => 'overdue']);
+            if ($this->status !== 'defaulted') {
+                $this->update(['status' => 'defaulted']);
             }
             return;
         }
 
         // 3. Otherwise, if it was disbursed/overdue and now has a payment, mark active
-        if (in_array($this->status, ['disbursed', 'overdue'])) {
+        if (in_array($this->status, ['disbursed', 'defaulted'])) {
             $this->update(['status' => 'active']);
         }
     }

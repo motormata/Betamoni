@@ -280,7 +280,7 @@ class UserController extends Controller
                     'total_overdue_amount' => $totalOverdueAmount,
                     'total_overdue_count' => $overdueCount,
                     'active_loans_count' => \App\Models\Loan::where('agent_id', $agent->id)
-                        ->whereIn('status', ['active', 'overdue'])
+                        ->whereIn('status', ['active', 'defaulted'])
                         ->count(),
                 ]
             ];
