@@ -327,6 +327,236 @@ class LoanCalculationService
     }
 
     /**
+     * CALCULATION F: Loan Approvals, Disbursements, and Rejections per Day
+     * 
+     * This calculates the daily volume and value of loan originations.
+     */
+    public function calculateLoanActivityByDate($date = null, $marketId = null)
+    {
+        $date = $date ?? today();
+        
+        $approvedQuery = Loan::whereDate('approved_at', $date);
+        $disbursedQuery = Loan::whereDate('disbursed_at', $date);
+        $rejectedQuery = Loan::whereDate('rejected_at', $date);
+
+        if ($marketId) {
+            $approvedQuery->where('market_id', $marketId);
+            $disbursedQuery->where('market_id', $marketId);
+            $rejectedQuery->where('market_id', $marketId);
+        }
+
+        $approved = $approvedQuery->get(['id', 'principal_amount']);
+        $disbursed = $disbursedQuery->get(['id', 'principal_amount']);
+        $rejected = $rejectedQuery->get(['id', 'principal_amount']);
+
+        return [
+            'approved' => [
+                'count' => $approved->count(),
+                'total_principal' => $approved->sum('principal_amount')
+            ],
+            'disbursed' => [
+                'count' => $disbursed->count(),
+                'total_principal' => $disbursed->sum('principal_amount')
+            ],
+            'rejected' => [
+                'count' => $rejected->count(),
+                'total_principal' => $rejected->sum('principal_amount')
+            ]
+        ];
+    }
+
+    /**
+     * CALCULATION G: Historical Performance (batch-optimized)
+     *
+     * Fetches collections, expected repayments, and loan activity
+     * (approved / disbursed / rejected) across a date range using
+     * 5 batch SQL queries with GROUP BY, then assembles a per-day,
+     * per-market breakdown in memory.
+     *
+     * @param  \Carbon\Carbon  $fromDate
+     * @param  \Carbon\Carbon  $toDate
+     * @param  string|null     $marketId  UUID filter (null = all markets)
+     * @return array  ['daily_breakdown' => [...], 'summary' => [...]]
+     */
+    public function calculateHistoricalPerformance(Carbon $fromDate, Carbon $toDate, $marketId = null)
+    {
+        // Fetch markets we are interested in
+        $markets = \App\Models\Market::query()
+            ->when($marketId, fn($q) => $q->where('id', $marketId))
+            ->get(['id', 'name'])
+            ->keyBy('id');
+
+        // ── QUERY 1: Collections (verified payments) ────────────────
+        $collections = \App\Models\Payment::query()
+            ->join('loans', 'payments.loan_id', '=', 'loans.id')
+            ->whereBetween('payments.payment_date', [$fromDate, $toDate])
+            ->where('payments.is_verified', true)
+            ->when($marketId, fn($q) => $q->where('loans.market_id', $marketId))
+            ->groupBy('date', 'loans.market_id')
+            ->select(
+                DB::raw('DATE(payments.payment_date) as date'),
+                'loans.market_id',
+                DB::raw('SUM(payments.amount) as total_recovered'),
+                DB::raw('COUNT(payments.id) as payment_count')
+            )
+            ->get()
+            ->groupBy('date')
+            ->map(fn($rows) => $rows->keyBy('market_id'));
+
+        // ── QUERY 2: Expected repayments ────────────────────────────
+        $expected = RepaymentSchedule::query()
+            ->join('loans', 'repayment_schedules.loan_id', '=', 'loans.id')
+            ->whereBetween('repayment_schedules.due_date', [$fromDate, $toDate])
+            ->when($marketId, fn($q) => $q->where('loans.market_id', $marketId))
+            ->groupBy('date', 'loans.market_id')
+            ->select(
+                DB::raw('DATE(repayment_schedules.due_date) as date'),
+                'loans.market_id',
+                DB::raw('SUM(repayment_schedules.expected_amount) as total_expected')
+            )
+            ->get()
+            ->groupBy('date')
+            ->map(fn($rows) => $rows->keyBy('market_id'));
+
+        // ── QUERIES 3-5: Loan activity (approved / disbursed / rejected)
+        $fetchActivity = function (string $timestampCol) use ($fromDate, $toDate, $marketId) {
+            return Loan::query()
+                ->whereNotNull($timestampCol)
+                ->whereBetween($timestampCol, [$fromDate, $toDate->copy()->endOfDay()])
+                ->when($marketId, fn($q) => $q->where('market_id', $marketId))
+                ->groupBy('date', 'market_id')
+                ->select(
+                    DB::raw("DATE($timestampCol) as date"),
+                    'market_id',
+                    DB::raw('COUNT(*) as loan_count'),
+                    DB::raw('SUM(principal_amount) as total_principal')
+                )
+                ->get()
+                ->groupBy('date')
+                ->map(fn($rows) => $rows->keyBy('market_id'));
+        };
+
+        $approvedData  = $fetchActivity('approved_at');
+        $disbursedData = $fetchActivity('disbursed_at');
+        $rejectedData  = $fetchActivity('rejected_at');
+
+        // ── Assemble daily breakdown from pre-fetched data ──────────
+        $dailyData   = [];
+        $currentDate = $fromDate->copy();
+
+        while ($currentDate <= $toDate) {
+            $dateKey = $currentDate->format('Y-m-d');
+            $day     = $this->assembleDayMetrics(
+                $dateKey, $markets, $collections, $expected,
+                $approvedData, $disbursedData, $rejectedData
+            );
+
+            $dailyData[] = $day;
+            $currentDate->addDay();
+        }
+
+        // ── Period-wide summary ─────────────────────────────────────
+        $col = fn(string $key) => array_sum(array_column($dailyData, $key));
+
+        return [
+            'period' => [
+                'from' => $fromDate->format('Y-m-d'),
+                'to'   => $toDate->format('Y-m-d'),
+                'days' => $fromDate->diffInDays($toDate) + 1,
+            ],
+            'summary' => [
+                'total_collected'  => $col('total_collections'),
+                'total_expected'   => $col('total_expected'),
+                'collection_rate'  => $col('total_expected') > 0
+                    ? round(($col('total_collections') / $col('total_expected')) * 100, 2)
+                    : 0,
+                'loans' => [
+                    'approved_count'   => $col('total_approved_count'),
+                    'approved_volume'  => $col('total_approved_volume'),
+                    'disbursed_count'  => $col('total_disbursed_count'),
+                    'disbursed_volume' => $col('total_disbursed_volume'),
+                    'rejected_count'   => $col('total_rejected_count'),
+                    'rejected_volume'  => $col('total_rejected_volume'),
+                ],
+            ],
+            'daily_breakdown' => $dailyData,
+        ];
+    }
+
+    /**
+     * HELPER: Assemble a single day's metrics from pre-fetched batch data
+     */
+    private function assembleDayMetrics(
+        string $dateKey,
+        $markets,
+        $collections,
+        $expected,
+        $approvedData,
+        $disbursedData,
+        $rejectedData
+    ): array {
+        $dayCollections = $dayExpected = 0;
+        $dayApprCount = $dayApprVol = 0;
+        $dayDisbCount = $dayDisbVol = 0;
+        $dayRejCount  = $dayRejVol  = 0;
+
+        $marketBreakdown = [];
+
+        foreach ($markets as $mId => $market) {
+            $cRow = $collections->get($dateKey)?->get($mId);
+            $eRow = $expected->get($dateKey)?->get($mId);
+            $aRow = $approvedData->get($dateKey)?->get($mId);
+            $dRow = $disbursedData->get($dateKey)?->get($mId);
+            $rRow = $rejectedData->get($dateKey)?->get($mId);
+
+            $mCollected = (float) ($cRow->total_recovered ?? 0);
+            $mExpected  = (float) ($eRow->total_expected ?? 0);
+            $mApprCount = (int)   ($aRow->loan_count ?? 0);
+            $mApprVol   = (float) ($aRow->total_principal ?? 0);
+            $mDisbCount = (int)   ($dRow->loan_count ?? 0);
+            $mDisbVol   = (float) ($dRow->total_principal ?? 0);
+            $mRejCount  = (int)   ($rRow->loan_count ?? 0);
+            $mRejVol    = (float) ($rRow->total_principal ?? 0);
+
+            $dayCollections += $mCollected;
+            $dayExpected    += $mExpected;
+            $dayApprCount   += $mApprCount;
+            $dayApprVol     += $mApprVol;
+            $dayDisbCount   += $mDisbCount;
+            $dayDisbVol     += $mDisbVol;
+            $dayRejCount    += $mRejCount;
+            $dayRejVol      += $mRejVol;
+
+            $marketBreakdown[] = [
+                'market_id'       => $mId,
+                'market_name'     => $market->name,
+                'collections'     => $mCollected,
+                'expected'        => $mExpected,
+                'collection_rate' => $mExpected > 0
+                    ? round(($mCollected / $mExpected) * 100, 2) : 0,
+                'activity' => [
+                    'approved'  => ['count' => $mApprCount, 'total_principal' => $mApprVol],
+                    'disbursed' => ['count' => $mDisbCount, 'total_principal' => $mDisbVol],
+                    'rejected'  => ['count' => $mRejCount,  'total_principal' => $mRejVol],
+                ],
+            ];
+        }
+
+        return [
+            'date'                   => $dateKey,
+            'total_collections'      => $dayCollections,
+            'total_expected'         => $dayExpected,
+            'total_approved_count'   => $dayApprCount,
+            'total_approved_volume'  => $dayApprVol,
+            'total_disbursed_count'  => $dayDisbCount,
+            'total_disbursed_volume' => $dayDisbVol,
+            'total_rejected_count'   => $dayRejCount,
+            'total_rejected_volume'  => $dayRejVol,
+            'markets'                => $marketBreakdown,
+        ];
+    }
+
+    /**
      * HELPER: Check if a loan has unpaid obligations
      * 
      * A loan has unpaid obligations if ANY of its repayment schedules
