@@ -437,14 +437,14 @@ class LoanController extends Controller
             'pending_loans'    => (clone $query)->where('status', 'pending')->count(),
             'approved_loans'   => (clone $query)->where('status', 'approved')->count(),
             'active_loans'     => (clone $query)->where('status', 'active')->count(),
-            'overdue_loans'    => (clone $query)->where('status', 'overdue')->count(),
+            'overdue_loans'    => (clone $query)->where('status', 'defaulted')->count(),
             'completed_loans'  => (clone $query)->where('status', 'completed')->count(),
             'defaulted_loans'  => (clone $query)->where('status', 'defaulted')->count(),
-            'total_disbursed'  => (clone $query)->whereIn('status', ['disbursed', 'active', 'overdue', 'completed'])
+            'total_disbursed'  => (clone $query)->whereIn('status', ['disbursed', 'active', 'defaulted', 'completed'])
                 ->sum('principal_amount'),
             // amount_paid and balance are kept live by PaymentController on every payment
             'total_collected'  => (clone $query)->sum('amount_paid'),
-            'total_outstanding' => (clone $query)->whereIn('status', ['disbursed', 'active', 'overdue'])
+            'total_outstanding' => (clone $query)->whereIn('status', ['disbursed', 'active', 'defaulted'])
                 ->sum('balance'),
         ];
 
