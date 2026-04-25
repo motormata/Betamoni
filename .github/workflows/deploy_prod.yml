@@ -1,0 +1,21 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Push to server and deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          USERNAME: ${{ secrets.DEV_USERNAME }}
+          PORT: ${{ secrets.PORT }}
+          KEY: ${{ secrets.DEV_SSHKEY }}
+          script: cd ${{ secrets.PROD_PATH }} && ls && git pull origin main && php8.2 /usr/local/bin/composer install && php8.2 artisan migrate && php8.2 artisan config:clear
