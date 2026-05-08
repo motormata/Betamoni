@@ -702,21 +702,31 @@ class LoanCalculationService
     /**
      * Calculate due date for an installment
      */
-    private function calculateDueDate($startDate, $frequency, $installmentNumber)
+    public function calculateDueDate($startDate, $frequency, $installmentNumber)
     {
         $date = Carbon::parse($startDate);
 
         switch ($frequency) {
             case 'daily':
-                return $date->addDays($installmentNumber);
+                $date->addWeekdays($installmentNumber);
+                break;
             case 'weekly':
-                return $date->addWeeks($installmentNumber);
+                $date->addWeeks($installmentNumber);
+                break;
             case 'bi-weekly':
-                return $date->addWeeks($installmentNumber * 2);
+                $date->addWeeks($installmentNumber * 2);
+                break;
             case 'monthly':
-                return $date->addMonths($installmentNumber);
+                $date->addMonths($installmentNumber);
+                break;
             default:
-                return $date;
+                break;
         }
+
+        if ($frequency !== 'daily' && $date->isWeekend()) {
+            $date = $date->nextWeekday();
+        }
+
+        return $date;
     }
 }
