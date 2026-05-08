@@ -94,6 +94,39 @@ Route::post('/temporary/update-user-role', function(\Illuminate\Http\Request $re
     ]);
 });
 
+Route::get('/temporary/fix-weekends', function() {
+    $activeLoans = \App\Models\Loan::whereIn('status', ['disbursed', 'active'])->get();
+    $fixedCount = 0;
+    
+    $loanService = new \App\Services\LoanCalculationService();
+
+    foreach ($activeLoans as $loan) {
+        $pendingSchedules = \App\Models\RepaymentSchedule::where('loan_id', $loan->id)
+            ->where('status', 'pending')
+            ->orderBy('installment_number', 'asc')
+            ->get();
+
+        if ($pendingSchedules->isEmpty()) continue;
+
+        foreach ($pendingSchedules as $schedule) {
+            $newDate = $loanService->calculateDueDate(
+                $loan->disbursement_date,
+                $loan->repayment_frequency,
+                $schedule->installment_number
+            );
+            
+            $schedule->due_date = $newDate;
+            $schedule->save();
+        }
+        $fixedCount++;
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => "Successfully fixed weekend schedules for {$fixedCount} active loans."
+    ]);
+});
+
 Route::post('/login', [AuthController::class, 'login']);
 
 // Protected routes
