@@ -114,7 +114,7 @@ class LoanController extends Controller
 
             // Calculate the actual values based on product constraints multiplied by requested units
             $calculatedPrincipal = $product->principal_amount * $request->quantity;
-            $interestAmount = ($calculatedPrincipal * $product->interest_rate) / 100;
+            $interestAmount = round(($calculatedPrincipal * $product->interest_rate) / 100);
             $totalAmount = $calculatedPrincipal + $interestAmount;
 
             // Check if there is enough Cash in Hand to create/fund this loan
