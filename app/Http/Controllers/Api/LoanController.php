@@ -443,6 +443,7 @@ class LoanController extends Controller
             'total_loans'      => (clone $query)->count(),
             'pending_loans'    => (clone $query)->where('status', 'pending')->count(),
             'approved_loans'   => (clone $query)->where('status', 'approved')->count(),
+            'disbursed_loans'  => (clone $query)->where('status', 'disbursed')->count(),
             'active_loans'     => (clone $query)->where('status', 'active')->count(),
             'overdue_loans'    => (clone $query)->where('status', 'defaulted')->count(),
             'completed_loans'  => (clone $query)->where('status', 'completed')->count(),
