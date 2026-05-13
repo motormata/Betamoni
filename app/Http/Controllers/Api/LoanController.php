@@ -410,6 +410,13 @@ class LoanController extends Controller
 
     public function summary(Request $request)
     {
+        // "Poor Man's Cron": Check if we've updated defaulted loans today
+        $cacheKey = 'daily_default_loans_check_' . today()->toDateString();
+        if (!\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+            \Illuminate\Support\Facades\Artisan::call('loans:update-defaulted');
+            \Illuminate\Support\Facades\Cache::put($cacheKey, true, now()->endOfDay());
+        }
+
         $query = Loan::query();
         $user = auth()->user();
 
