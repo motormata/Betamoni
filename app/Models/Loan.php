@@ -156,7 +156,7 @@ class Loan extends Model
 
     public function calculateInterest()
     {
-        return ($this->principal_amount * $this->interest_rate) / 100;
+        return round(($this->principal_amount * $this->interest_rate) / 100);
     }
 
     public function calculateTotal()

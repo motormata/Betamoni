@@ -18,114 +18,114 @@ Route::get('/force-uuid-reset', function() {
     }
 });
 
-Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
-    // Create base roles
-    $roles = [
-        ['name' => 'Super Admin', 'slug' => 'super-admin', 'description' => 'System administrator'],
-        ['name' => 'Supervisor', 'slug' => 'supervisor', 'description' => 'System supervisor'],
-        ['name' => 'Agent', 'slug' => 'agent', 'description' => 'System agent'],
-    ];
+// Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
+//     // Create base roles
+//     $roles = [
+//         ['name' => 'Super Admin', 'slug' => 'super-admin', 'description' => 'System administrator'],
+//         ['name' => 'Supervisor', 'slug' => 'supervisor', 'description' => 'System supervisor'],
+//         ['name' => 'Agent', 'slug' => 'agent', 'description' => 'System agent'],
+//     ];
 
-    foreach ($roles as $roleData) {
-        \App\Models\Role::updateOrCreate(['slug' => $roleData['slug']], $roleData);
-    }
+//     foreach ($roles as $roleData) {
+//         \App\Models\Role::updateOrCreate(['slug' => $roleData['slug']], $roleData);
+//     }
 
-    // Attempt to find existing admin or create a new one
-    $user = \App\Models\User::updateOrCreate(
-        ['email' => $request->input('email', 'admin@betamoni.com')],
-        [
-            'name' => $request->input('name', 'Super Admin'),
-            'password' => $request->input('password', 'password123'),
-            'phone_number' => $request->input('phone_number', '08000000000'),
-            'address' => 'Admin Address',
-            'kyc_status' => 'verified'
-        ]
-    );
+//     // Attempt to find existing admin or create a new one
+//     $user = \App\Models\User::updateOrCreate(
+//         ['email' => $request->input('email', 'admin@betamoni.com')],
+//         [
+//             'name' => $request->input('name', 'Super Admin'),
+//             'password' => $request->input('password', 'password123'),
+//             'phone_number' => $request->input('phone_number', '08000000000'),
+//             'address' => 'Admin Address',
+//             'kyc_status' => 'verified'
+//         ]
+//     );
 
-    // Assign super-admin role
-    $adminRole = \App\Models\Role::where('slug', 'super-admin')->first();
-    if ($adminRole) {
-        $user->update(['role_id' => $adminRole->id]);
-    }
+//     // Assign super-admin role
+//     $adminRole = \App\Models\Role::where('slug', 'super-admin')->first();
+//     if ($adminRole) {
+//         $user->update(['role_id' => $adminRole->id]);
+//     }
     
-    $user->refresh();
-    $user->load('role');
+//     $user->refresh();
+//     $user->load('role');
 
-    return response()->json([
-        'message' => 'Roles created and Super Admin setup completed.',
-        'user' => [
-            'id' => $user->id,
-            'email' => $user->email,
-            'name' => $user->name,
-            'role_id' => $user->role_id,
-            'role' => $user->role->slug ?? null
-        ]
-    ]);
-});
+//     return response()->json([
+//         'message' => 'Roles created and Super Admin setup completed.',
+//         'user' => [
+//             'id' => $user->id,
+//             'email' => $user->email,
+//             'name' => $user->name,
+//             'role_id' => $user->role_id,
+//             'role' => $user->role->slug ?? null
+//         ]
+//     ]);
+// });
 
 
-Route::post('/temporary/update-user-role', function(\Illuminate\Http\Request $request) {
-    $validator = validator($request->all(), [
-        'email' => 'required|email|exists:users,email',
-        'role_slug' => 'required|string|exists:roles,slug'
-    ]);
+// Route::post('/temporary/update-user-role', function(\Illuminate\Http\Request $request) {
+//     $validator = validator($request->all(), [
+//         'email' => 'required|email|exists:users,email',
+//         'role_slug' => 'required|string|exists:roles,slug'
+//     ]);
 
-    if ($validator->fails()) {
-        return response()->json(['errors' => $validator->errors()], 422);
-    }
+//     if ($validator->fails()) {
+//         return response()->json(['errors' => $validator->errors()], 422);
+//     }
 
-    $user = \App\Models\User::where('email', $request->email)->first();
-    $role = \App\Models\Role::where('slug', $request->role_slug)->first();
+//     $user = \App\Models\User::where('email', $request->email)->first();
+//     $role = \App\Models\Role::where('slug', $request->role_slug)->first();
     
-    $user->update(['role_id' => $role->id]);
+//     $user->update(['role_id' => $role->id]);
     
-    $user->refresh();
-    $user->load('role');
+//     $user->refresh();
+//     $user->load('role');
 
-    return response()->json([
-        'success' => true, 
-        'message' => "Role updated to {$role->name} for {$user->email}",
-        'user' => [
-            'id' => $user->id,
-            'email' => $user->email,
-            'role_id' => $user->role_id,
-            'role' => $user->role->slug ?? null
-        ]
-    ]);
-});
+//     return response()->json([
+//         'success' => true, 
+//         'message' => "Role updated to {$role->name} for {$user->email}",
+//         'user' => [
+//             'id' => $user->id,
+//             'email' => $user->email,
+//             'role_id' => $user->role_id,
+//             'role' => $user->role->slug ?? null
+//         ]
+//     ]);
+// });
 
-Route::get('/temporary/fix-weekends', function() {
-    $activeLoans = \App\Models\Loan::whereIn('status', ['disbursed', 'active'])->get();
-    $fixedCount = 0;
+// Route::get('/temporary/fix-weekends', function() {
+//     $activeLoans = \App\Models\Loan::whereIn('status', ['disbursed', 'active'])->get();
+//     $fixedCount = 0;
     
-    $loanService = new \App\Services\LoanCalculationService();
+//     $loanService = new \App\Services\LoanCalculationService();
 
-    foreach ($activeLoans as $loan) {
-        $pendingSchedules = \App\Models\RepaymentSchedule::where('loan_id', $loan->id)
-            ->where('status', 'pending')
-            ->orderBy('installment_number', 'asc')
-            ->get();
+//     foreach ($activeLoans as $loan) {
+//         $pendingSchedules = \App\Models\RepaymentSchedule::where('loan_id', $loan->id)
+//             ->where('status', 'pending')
+//             ->orderBy('installment_number', 'asc')
+//             ->get();
 
-        if ($pendingSchedules->isEmpty()) continue;
+//         if ($pendingSchedules->isEmpty()) continue;
 
-        foreach ($pendingSchedules as $schedule) {
-            $newDate = $loanService->calculateDueDate(
-                $loan->disbursement_date,
-                $loan->repayment_frequency,
-                $schedule->installment_number
-            );
+//         foreach ($pendingSchedules as $schedule) {
+//             $newDate = $loanService->calculateDueDate(
+//                 $loan->disbursement_date,
+//                 $loan->repayment_frequency,
+//                 $schedule->installment_number
+//             );
             
-            $schedule->due_date = $newDate;
-            $schedule->save();
-        }
-        $fixedCount++;
-    }
+//             $schedule->due_date = $newDate;
+//             $schedule->save();
+//         }
+//         $fixedCount++;
+//     }
 
-    return response()->json([
-        'success' => true,
-        'message' => "Successfully fixed weekend schedules for {$fixedCount} active loans."
-    ]);
-});
+//     return response()->json([
+//         'success' => true,
+//         'message' => "Successfully fixed weekend schedules for {$fixedCount} active loans."
+//     ]);
+// });
 
 Route::post('/login', [AuthController::class, 'login']);
 

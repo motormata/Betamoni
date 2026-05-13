@@ -114,7 +114,7 @@ class LoanController extends Controller
 
             // Calculate the actual values based on product constraints multiplied by requested units
             $calculatedPrincipal = $product->principal_amount * $request->quantity;
-            $interestAmount = ($calculatedPrincipal * $product->interest_rate) / 100;
+            $interestAmount = round(($calculatedPrincipal * $product->interest_rate) / 100);
             $totalAmount = $calculatedPrincipal + $interestAmount;
 
             // Check if there is enough Cash in Hand to create/fund this loan
@@ -410,6 +410,13 @@ class LoanController extends Controller
 
     public function summary(Request $request)
     {
+        // "Poor Man's Cron": Check if we've updated defaulted loans today
+        $cacheKey = 'daily_default_loans_check_' . today()->toDateString();
+        if (!\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+            \Illuminate\Support\Facades\Artisan::call('loans:update-defaulted');
+            \Illuminate\Support\Facades\Cache::put($cacheKey, true, now()->endOfDay());
+        }
+
         $query = Loan::query();
         $user = auth()->user();
 
@@ -436,6 +443,7 @@ class LoanController extends Controller
             'total_loans'      => (clone $query)->count(),
             'pending_loans'    => (clone $query)->where('status', 'pending')->count(),
             'approved_loans'   => (clone $query)->where('status', 'approved')->count(),
+            'disbursed_loans'  => (clone $query)->where('status', 'disbursed')->count(),
             'active_loans'     => (clone $query)->where('status', 'active')->count(),
             'overdue_loans'    => (clone $query)->where('status', 'defaulted')->count(),
             'completed_loans'  => (clone $query)->where('status', 'completed')->count(),
