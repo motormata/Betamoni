@@ -245,11 +245,9 @@ Route::middleware('auth:api')->group(function () {
         Route::put('borrowers/{id}', [BorrowerController::class, 'update']);
         
         // Loan Management
-        Route::get('loans/{id}', [LoanController::class, 'show']);
         Route::get('loans', [LoanController::class, 'index']);
-        Route::post('loans', [LoanController::class, 'store']);
         Route::get('loans/summary', [LoanController::class, 'summary']);
-        
-        
+        Route::get('loans/{id}', [LoanController::class, 'show']);
+        Route::post('loans', [LoanController::class, 'store']);
     });
 });
