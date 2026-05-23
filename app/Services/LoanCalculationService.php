@@ -697,7 +697,7 @@ class LoanCalculationService
     /**
      * Calculate number of installments based on frequency and duration
      */
-    private function calculateInstallmentCount($frequency, $durationDays)
+    public function calculateInstallmentCount($frequency, $durationDays)
     {
         switch ($frequency) {
             case 'daily':

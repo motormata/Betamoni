@@ -132,6 +132,10 @@ class LoanController extends Controller
             $agent = auth()->user();
             $marketId = $agent->market_id ?? $request->market_id;
 
+            // Pre-calculate the installment amount so it's available immediately after creation
+            $installments = $calculationService->calculateInstallmentCount($product->repayment_frequency, $product->duration_days);
+            $amountPerInstallment = $installments > 0 ? ($totalAmount / $installments) : $totalAmount;
+
             $loan = Loan::create([
                 'loan_number' => Loan::generateLoanNumber(),
                 'borrower_id' => $request->borrower_id,
@@ -146,6 +150,7 @@ class LoanController extends Controller
                 'balance' => $totalAmount,
                 'duration_days' => $product->duration_days,
                 'repayment_frequency' => $product->repayment_frequency,
+                'installment_amount' => round($amountPerInstallment, 2),
                 'collection_day' => $request->collection_day,
                 'collection_time' => $request->collection_time,
                 'collection_location' => $request->collection_location,
