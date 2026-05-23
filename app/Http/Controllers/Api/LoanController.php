@@ -229,10 +229,12 @@ class LoanController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $loan,
-            'loan_installment_amount' => $loan->installment_amount,
-            'repayment_schedule' => $loan->repaymentSchedules,
-            'repayment_schedule_amount'=> $loan->repaymentSchedules->first()->expected_amount,
+            'data' => [
+                'loan' => $loan,
+                'loan_installment_amount' => $loan->installment_amount,
+                'repayment_schedule' => $loan->repaymentSchedules,
+                'repayment_schedule_amount'=> $loan->repaymentSchedules->first()->expected_amount
+            ]
         ], 200);
     }
 
