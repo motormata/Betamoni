@@ -593,6 +593,12 @@ class LoanCalculationService
     {
         $loan = Loan::with(['repaymentSchedules', 'payments'])->findOrFail($loanId);
 
+        // Back-fill installment_amount for loans disbursed before this field was populated
+        if ($loan->installment_amount === null && $loan->repaymentSchedules->isNotEmpty()) {
+            $loan->installment_amount = $loan->repaymentSchedules->first()->expected_amount;
+            $loan->saveQuietly();
+        }
+
         // What was borrowed
         $principalAmount = $loan->principal_amount;
         $interestAmount = $loan->interest_amount;
@@ -621,6 +627,8 @@ class LoanCalculationService
 
         return [
             'loan_number' => $loan->loan_number,
+            'repayment_frequency' => $loan->repayment_frequency,
+            'installment_amount' => $loan->installment_amount,
             'amounts' => [
                 'principal' => $principalAmount,
                 'interest' => $interestAmount,
@@ -662,6 +670,12 @@ class LoanCalculationService
         
         // Calculate amount per installment
         $amountPerInstallment = $totalAmount / $installments;
+
+        // Save the per-installment amount on the loan so it's always
+        // available when viewing loan repayment details
+        $loan->update([
+            'installment_amount' => round($amountPerInstallment, 2),
+        ]);
 
         // Generate schedule entries
         $schedules = [];

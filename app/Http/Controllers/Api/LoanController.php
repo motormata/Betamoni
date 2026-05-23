@@ -197,7 +197,8 @@ class LoanController extends Controller
             'approvedBy',
             'payments.collectedBy',
             'guarantors',
-            'activities.user'
+            'activities.user',
+            'repaymentSchedules'
         ])->find($id);
 
         if (!$loan) {
@@ -213,6 +214,12 @@ class LoanController extends Controller
                 'success' => false,
                 'message' => 'Unauthorized to view this loan'
             ], 403);
+        }
+
+        // Back-fill installment_amount for loans disbursed before this field was populated
+        if ($loan->installment_amount === null && $loan->repaymentSchedules->isNotEmpty()) {
+            $loan->installment_amount = $loan->repaymentSchedules->first()->expected_amount;
+            $loan->saveQuietly();
         }
 
         return response()->json([
