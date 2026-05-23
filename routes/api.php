@@ -18,6 +18,15 @@ Route::get('/force-uuid-reset', function() {
     }
 });
 
+Route::get('/cache-clear', function() {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('optimize:clear', ['--force' => true]);
+        return response()->json(['success' => true, 'message' => 'Cache cleared.']);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+    }
+});
+
 // Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
 //     // Create base roles
 //     $roles = [
