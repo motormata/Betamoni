@@ -21,7 +21,75 @@ Route::get('/force-uuid-reset', function() {
 Route::get('/cache-clear', function() {
     try {
         \Illuminate\Support\Facades\Artisan::call('optimize:clear');
-        return response()->json(['success' => true, 'message' => 'Cache cleared.']);
+
+        // --- ONE-TIME FIX: Recalculate loan due_dates to exclude weekends ---
+        $loans = \App\Models\Loan::whereNotNull('disbursement_date')
+            ->whereNotNull('due_date')
+            ->get();
+
+        $loanService = new \App\Services\LoanCalculationService();
+        $fixedLoans = 0;
+        $fixedSchedules = 0;
+        $details = [];
+
+        foreach ($loans as $loan) {
+            $disbursementDate = \Carbon\Carbon::parse($loan->disbursement_date);
+            $loanChanges = [];
+
+            // Fix 1: Loan due_date
+            $correctDueDate = $disbursementDate->copy()->addWeekdays($loan->duration_days);
+            $currentDueDate = \Carbon\Carbon::parse($loan->due_date);
+
+            if (!$currentDueDate->isSameDay($correctDueDate)) {
+                $loanChanges['due_date'] = [
+                    'old' => $currentDueDate->toDateString(),
+                    'new' => $correctDueDate->toDateString(),
+                ];
+                $loan->update(['due_date' => $correctDueDate]);
+                $fixedLoans++;
+            }
+
+            // Fix 2: Repayment schedule due dates
+            $schedules = \App\Models\RepaymentSchedule::where('loan_id', $loan->id)
+                ->orderBy('installment_number', 'asc')
+                ->get();
+
+            $scheduleChanges = [];
+            foreach ($schedules as $schedule) {
+                $correctScheduleDate = $loanService->calculateDueDate(
+                    $loan->disbursement_date,
+                    $loan->repayment_frequency,
+                    $schedule->installment_number
+                );
+
+                $currentScheduleDate = \Carbon\Carbon::parse($schedule->due_date);
+
+                if (!$currentScheduleDate->isSameDay($correctScheduleDate)) {
+                    $scheduleChanges[] = [
+                        'installment' => $schedule->installment_number,
+                        'old' => $currentScheduleDate->toDateString(),
+                        'new' => $correctScheduleDate->toDateString(),
+                    ];
+                    $schedule->update(['due_date' => $correctScheduleDate]);
+                    $fixedSchedules++;
+                }
+            }
+
+            if (!empty($loanChanges) || !empty($scheduleChanges)) {
+                $details[] = [
+                    'loan_number' => $loan->loan_number,
+                    'due_date_change' => $loanChanges ?: 'no change',
+                    'schedule_changes' => $scheduleChanges ?: 'no changes',
+                ];
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cache cleared. Fixed ' . $fixedLoans . ' loan due date(s) and ' . $fixedSchedules . ' schedule date(s).',
+            'total_loans_checked' => $loans->count(),
+            'details' => $details,
+        ]);
     } catch (\Exception $e) {
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
     }
@@ -135,6 +203,78 @@ Route::get('/cache-clear', function() {
 //         'message' => "Successfully fixed weekend schedules for {$fixedCount} active loans."
 //     ]);
 // });
+
+// ONE-TIME FIX: Recalculate loan due_dates and repayment schedules to exclude weekends.
+// Remove this route after running it once.
+Route::get('/fix-loan-due-dates', function () {
+    $loans = \App\Models\Loan::whereNotNull('disbursement_date')
+        ->whereNotNull('due_date')
+        ->get();
+
+    $loanService = new \App\Services\LoanCalculationService();
+    $fixedLoans = 0;
+    $fixedSchedules = 0;
+    $details = [];
+
+    foreach ($loans as $loan) {
+        $disbursementDate = \Carbon\Carbon::parse($loan->disbursement_date);
+        $loanChanges = [];
+
+        // --- Fix 1: Loan due_date ---
+        $correctDueDate = $disbursementDate->copy()->addWeekdays($loan->duration_days);
+        $currentDueDate = \Carbon\Carbon::parse($loan->due_date);
+
+        if (!$currentDueDate->isSameDay($correctDueDate)) {
+            $loanChanges['due_date'] = [
+                'old' => $currentDueDate->toDateString(),
+                'new' => $correctDueDate->toDateString(),
+            ];
+            $loan->update(['due_date' => $correctDueDate]);
+            $fixedLoans++;
+        }
+
+        // --- Fix 2: Repayment schedule due dates ---
+        $schedules = \App\Models\RepaymentSchedule::where('loan_id', $loan->id)
+            ->orderBy('installment_number', 'asc')
+            ->get();
+
+        $scheduleChanges = [];
+        foreach ($schedules as $schedule) {
+            $correctScheduleDate = $loanService->calculateDueDate(
+                $loan->disbursement_date,
+                $loan->repayment_frequency,
+                $schedule->installment_number
+            );
+
+            $currentScheduleDate = \Carbon\Carbon::parse($schedule->due_date);
+
+            if (!$currentScheduleDate->isSameDay($correctScheduleDate)) {
+                $scheduleChanges[] = [
+                    'installment' => $schedule->installment_number,
+                    'old' => $currentScheduleDate->toDateString(),
+                    'new' => $correctScheduleDate->toDateString(),
+                ];
+                $schedule->update(['due_date' => $correctScheduleDate]);
+                $fixedSchedules++;
+            }
+        }
+
+        if (!empty($loanChanges) || !empty($scheduleChanges)) {
+            $details[] = [
+                'loan_number' => $loan->loan_number,
+                'due_date_change' => $loanChanges ?: 'no change',
+                'schedule_changes' => $scheduleChanges ?: 'no changes',
+            ];
+        }
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => "Fixed {$fixedLoans} loan due date(s) and {$fixedSchedules} schedule date(s).",
+        'total_loans_checked' => $loans->count(),
+        'details' => $details,
+    ]);
+});
 
 Route::post('/login', [AuthController::class, 'login']);
 
