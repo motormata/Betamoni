@@ -362,7 +362,7 @@ class LoanController extends Controller
         DB::beginTransaction();
         try {
             $disbursementDate = \Carbon\Carbon::parse($request->disbursement_date);
-            $dueDate = $disbursementDate->copy()->addDays($loan->duration_days);
+            $dueDate = $disbursementDate->copy()->addWeekdays($loan->duration_days);
 
             // Update loan status
             $loan->update([
