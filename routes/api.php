@@ -18,6 +18,15 @@ Route::get('/force-uuid-reset', function() {
     }
 });
 
+Route::get('/cache-clear', function() {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('optimize:clear', ['--force' => true]);
+        return response()->json(['success' => true, 'message' => 'Cache cleared.']);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+    }
+});
+
 // Route::post('/setup-admin', function (\Illuminate\Http\Request $request) {
 //     // Create base roles
 //     $roles = [
@@ -246,9 +255,8 @@ Route::middleware('auth:api')->group(function () {
         
         // Loan Management
         Route::get('loans', [LoanController::class, 'index']);
-        Route::post('loans', [LoanController::class, 'store']);
         Route::get('loans/summary', [LoanController::class, 'summary']);
         Route::get('loans/{id}', [LoanController::class, 'show']);
-        
+        Route::post('loans', [LoanController::class, 'store']);
     });
 });

@@ -132,6 +132,10 @@ class LoanController extends Controller
             $agent = auth()->user();
             $marketId = $agent->market_id ?? $request->market_id;
 
+            // Pre-calculate the installment amount so it's available immediately after creation
+            $installments = $calculationService->calculateInstallmentCount($product->repayment_frequency, $product->duration_days);
+            $amountPerInstallment = $installments > 0 ? ($totalAmount / $installments) : $totalAmount;
+
             $loan = Loan::create([
                 'loan_number' => Loan::generateLoanNumber(),
                 'borrower_id' => $request->borrower_id,
@@ -146,6 +150,7 @@ class LoanController extends Controller
                 'balance' => $totalAmount,
                 'duration_days' => $product->duration_days,
                 'repayment_frequency' => $product->repayment_frequency,
+                'installment_amount' => round($amountPerInstallment, 2),
                 'collection_day' => $request->collection_day,
                 'collection_time' => $request->collection_time,
                 'collection_location' => $request->collection_location,
@@ -197,7 +202,8 @@ class LoanController extends Controller
             'approvedBy',
             'payments.collectedBy',
             'guarantors',
-            'activities.user'
+            'activities.user',
+            'repaymentSchedules'
         ])->find($id);
 
         if (!$loan) {
@@ -215,9 +221,16 @@ class LoanController extends Controller
             ], 403);
         }
 
+        // Back-fill installment_amount for loans disbursed before this field was populated
+        if ($loan->installment_amount === null && $loan->repaymentSchedules->isNotEmpty()) {
+            $loan->installment_amount = $loan->repaymentSchedules->first()->expected_amount;
+            $loan->saveQuietly();
+        }
+
         return response()->json([
             'success' => true,
-            'data' => $loan
+            'data' => "hiii"
+            // $loan
         ], 200);
     }
 

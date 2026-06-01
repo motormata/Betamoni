@@ -194,4 +194,25 @@ class Loan extends Model
 
         return $candidate;
     }
+
+    /**
+     * Accessor to compute installment_amount on the fly if it is null in the database
+     * (e.g. for loans created before this field was explicitly populated)
+     */
+    public function getInstallmentAmountAttribute($value)
+    {
+        if ($value !== null) {
+            return $value;
+        }
+
+        if ($this->duration_days && $this->repayment_frequency) {
+            $calc = app(\App\Services\LoanCalculationService::class);
+            $installments = $calc->calculateInstallmentCount($this->repayment_frequency, $this->duration_days);
+            if ($installments > 0) {
+                return round($this->total_amount / $installments, 2);
+            }
+        }
+
+        return null;
+    }
 }
