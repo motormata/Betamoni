@@ -217,28 +217,15 @@ Route::get('/fix-loan-due-dates', function () {
     $details = [];
 
     foreach ($loans as $loan) {
-        $disbursementDate = \Carbon\Carbon::parse($loan->disbursement_date);
         $loanChanges = [];
+        $scheduleChanges = [];
+        $lastDueDate = null;
 
-        // --- Fix 1: Loan due_date ---
-        $correctDueDate = $disbursementDate->copy()->addWeekdays($loan->duration_days);
-        $currentDueDate = \Carbon\Carbon::parse($loan->due_date);
-
-        if (!$currentDueDate->isSameDay($correctDueDate)) {
-            $loanChanges['due_date'] = [
-                'old' => $currentDueDate->toDateString(),
-                'new' => $correctDueDate->toDateString(),
-            ];
-            $loan->update(['due_date' => $correctDueDate]);
-            $fixedLoans++;
-        }
-
-        // --- Fix 2: Repayment schedule due dates ---
+        // --- Fix 1: Repayment schedule due dates ---
         $schedules = \App\Models\RepaymentSchedule::where('loan_id', $loan->id)
             ->orderBy('installment_number', 'asc')
             ->get();
 
-        $scheduleChanges = [];
         foreach ($schedules as $schedule) {
             $correctScheduleDate = $loanService->calculateDueDate(
                 $loan->disbursement_date,
@@ -257,6 +244,29 @@ Route::get('/fix-loan-due-dates', function () {
                 $schedule->update(['due_date' => $correctScheduleDate]);
                 $fixedSchedules++;
             }
+            
+            $lastDueDate = $correctScheduleDate;
+        }
+
+        // --- Fix 2: Loan due_date ---
+        if (!$lastDueDate) {
+            $disbursementDate = \Carbon\Carbon::parse($loan->disbursement_date);
+            if ($loan->repayment_frequency === 'daily') {
+                $lastDueDate = $disbursementDate->copy()->addWeekdays($loan->duration_days);
+            } else {
+                $lastDueDate = $disbursementDate->copy()->addDays($loan->duration_days);
+            }
+        }
+
+        $currentDueDate = \Carbon\Carbon::parse($loan->due_date);
+
+        if (!$currentDueDate->isSameDay($lastDueDate)) {
+            $loanChanges['due_date'] = [
+                'old' => $currentDueDate->toDateString(),
+                'new' => $lastDueDate->toDateString(),
+            ];
+            $loan->update(['due_date' => $lastDueDate]);
+            $fixedLoans++;
         }
 
         if (!empty($loanChanges) || !empty($scheduleChanges)) {
