@@ -362,19 +362,23 @@ class LoanController extends Controller
         DB::beginTransaction();
         try {
             $disbursementDate = \Carbon\Carbon::parse($request->disbursement_date);
-            $dueDate = $disbursementDate->copy()->addWeekdays($loan->duration_days);
 
-            // Update loan status
+            // Update loan status and disbursement date first
             $loan->update([
                 'status' => 'disbursed',
                 'disbursement_date' => $disbursementDate,
-                'due_date' => $dueDate,
                 'disbursed_at' => now(),
             ]);
 
             // Generate repayment schedule
             $calculationService = new \App\Services\LoanCalculationService();
             $schedules = $calculationService->generateRepaymentSchedule($loan);
+
+            // Set final due date based on the last generated schedule
+            $lastSchedule = end($schedules);
+            $dueDate = $lastSchedule ? $lastSchedule->due_date : $disbursementDate->copy()->addWeekdays($loan->duration_days);
+
+            $loan->update(['due_date' => $dueDate]);
 
             // Record cash ledger entry (Money OUT)
             \App\Models\CashLedger::create([

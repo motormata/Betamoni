@@ -24,40 +24,72 @@ class FixLoanDueDates extends Command
             $this->info('Running in DRY-RUN mode — no changes will be saved.');
         }
 
-        // Get all loans that have been disbursed (have a disbursement_date)
         $loans = Loan::whereNotNull('disbursement_date')
             ->whereNotNull('due_date')
             ->get();
 
         $this->info("Found {$loans->count()} disbursed loans to check.");
 
-        $fixed = 0;
+        $fixedLoans = 0;
+        $fixedSchedules = 0;
+        $loanService = new \App\Services\LoanCalculationService();
 
         foreach ($loans as $loan) {
-            $disbursementDate = Carbon::parse($loan->disbursement_date);
-            $correctDueDate = $disbursementDate->copy()->addWeekdays($loan->duration_days);
+            $schedules = \App\Models\RepaymentSchedule::where('loan_id', $loan->id)
+                ->orderBy('installment_number', 'asc')
+                ->get();
+
+            $lastDueDate = null;
+            $schedulesChanged = false;
+
+            foreach ($schedules as $schedule) {
+                $correctScheduleDate = $loanService->calculateDueDate(
+                    $loan->disbursement_date,
+                    $loan->repayment_frequency,
+                    $schedule->installment_number
+                );
+
+                $currentScheduleDate = Carbon::parse($schedule->due_date);
+
+                if (!$currentScheduleDate->isSameDay($correctScheduleDate)) {
+                    if (!$dryRun) {
+                        $schedule->update(['due_date' => $correctScheduleDate]);
+                    }
+                    $fixedSchedules++;
+                    $schedulesChanged = true;
+                }
+                
+                $lastDueDate = $correctScheduleDate;
+            }
+
+            // Determine the correct loan due date from the last schedule, or fallback
+            if (!$lastDueDate) {
+                $disbursementDate = Carbon::parse($loan->disbursement_date);
+                if ($loan->repayment_frequency === 'daily') {
+                    $lastDueDate = $disbursementDate->copy()->addWeekdays($loan->duration_days);
+                } else {
+                    $lastDueDate = $disbursementDate->copy()->addDays($loan->duration_days);
+                }
+            }
+
             $currentDueDate = Carbon::parse($loan->due_date);
 
-            // Only update if the dates differ
-            if (!$currentDueDate->isSameDay($correctDueDate)) {
+            if (!$currentDueDate->isSameDay($lastDueDate)) {
                 $this->line(
-                    "  Loan {$loan->loan_number}: {$currentDueDate->toDateString()} → {$correctDueDate->toDateString()}"
+                    "  Loan {$loan->loan_number}: due_date {$currentDueDate->toDateString()} → {$lastDueDate->toDateString()}"
                 );
 
                 if (!$dryRun) {
-                    $loan->update(['due_date' => $correctDueDate]);
+                    $loan->update(['due_date' => $lastDueDate]);
                 }
-
-                $fixed++;
+                $fixedLoans++;
+            } elseif ($schedulesChanged) {
+                $this->line("  Loan {$loan->loan_number}: schedules updated.");
             }
         }
 
-        if ($fixed === 0) {
-            $this->info('All loan due dates are already correct. Nothing to fix.');
-        } else {
-            $action = $dryRun ? 'would be fixed' : 'fixed';
-            $this->info("{$fixed} loan(s) {$action}.");
-        }
+        $action = $dryRun ? 'would be fixed' : 'fixed';
+        $this->info("{$fixedLoans} loan(s) and {$fixedSchedules} schedule(s) {$action}.");
 
         return Command::SUCCESS;
     }
