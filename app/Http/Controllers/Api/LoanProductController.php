@@ -41,7 +41,7 @@ class LoanProductController extends Controller
             'name'                => 'required|string|unique:loan_products',
             'description'         => 'nullable|string',
             'principal_amount'    => 'required|numeric|min:1',
-            'interest_rate'       => 'required|numeric|min:0',
+            'expected_amount_to_pay' => 'required|numeric|gt:principal_amount',
             'duration_days'       => 'required|integer|min:1',
             'repayment_frequency' => 'required|in:daily,weekly,bi-weekly,monthly',
             'is_active'           => 'boolean'
@@ -55,7 +55,10 @@ class LoanProductController extends Controller
             ], 422);
         }
 
-        $product = LoanProduct::create($request->all());
+        $data = $request->all();
+        $data['interest_rate'] = (($data['expected_amount_to_pay'] - $data['principal_amount']) / $data['principal_amount']) * 100;
+
+        $product = LoanProduct::create($data);
 
         return response()->json([
             'success' => true,
@@ -96,7 +99,7 @@ class LoanProductController extends Controller
             'name'                => 'string|unique:loan_products,name,' . $id,
             'description'         => 'nullable|string',
             'principal_amount'    => 'numeric|min:1',
-            'interest_rate'       => 'numeric|min:0',
+            'expected_amount_to_pay' => 'numeric',
             'duration_days'       => 'integer|min:1',
             'repayment_frequency' => 'in:daily,weekly,bi-weekly,monthly',
             'is_active'           => 'boolean'
@@ -110,10 +113,19 @@ class LoanProductController extends Controller
             ], 422);
         }
 
-        $product->update($request->only([
-            'name', 'description', 'principal_amount', 'interest_rate',
+        $data = $request->only([
+            'name', 'description', 'principal_amount', 'expected_amount_to_pay',
             'duration_days', 'repayment_frequency', 'is_active'
-        ]));
+        ]);
+
+        $principal = $request->has('principal_amount') ? $request->principal_amount : $product->principal_amount;
+        $expected = $request->has('expected_amount_to_pay') ? $request->expected_amount_to_pay : $product->expected_amount_to_pay;
+
+        if ($principal > 0 && $expected !== null) {
+            $data['interest_rate'] = (($expected - $principal) / $principal) * 100;
+        }
+
+        $product->update($data);
 
         return response()->json([
             'success' => true,

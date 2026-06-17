@@ -15,6 +15,7 @@ class LoanProduct extends Model
         'name',
         'description',
         'principal_amount',
+        'expected_amount_to_pay',
         'interest_rate',
         'duration_days',
         'repayment_frequency', // daily, weekly, bi-weekly, monthly
@@ -23,6 +24,7 @@ class LoanProduct extends Model
 
     protected $casts = [
         'principal_amount' => 'decimal:2',
+        'expected_amount_to_pay' => 'decimal:2',
         'interest_rate' => 'decimal:2',
         'is_active' => 'boolean',
     ];
